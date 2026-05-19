@@ -43,7 +43,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.aggregateAnalytics = exports.onImageUpload = exports.onOrderStatusChange = exports.processRefund = exports.verifyRazorpayPayment = exports.createRazorpayOrder = exports.reverseGeocode = void 0;
+exports.aggregateAnalytics = exports.onImageUpload = exports.onOrderStatusChange = exports.processRefund = exports.verifyRazorpayPayment = exports.createRazorpayOrder = exports.reverseGeocode = exports.createOrderTransaction = void 0;
 const admin = __importStar(require("firebase-admin"));
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
@@ -55,6 +55,8 @@ const razorpay_1 = __importDefault(require("razorpay"));
 const crypto = __importStar(require("crypto"));
 admin.initializeApp();
 const db = admin.firestore();
+var create_order_transaction_1 = require("./orders/create-order-transaction");
+Object.defineProperty(exports, "createOrderTransaction", { enumerable: true, get: function () { return create_order_transaction_1.createOrderTransaction; } });
 const RAZORPAY_KEY_ID = (0, params_1.defineSecret)('RAZORPAY_KEY_ID');
 const RAZORPAY_KEY_SECRET = (0, params_1.defineSecret)('RAZORPAY_KEY_SECRET');
 const GOOGLE_MAPS_API_KEY = (0, params_1.defineSecret)('GOOGLE_MAPS_API_KEY');

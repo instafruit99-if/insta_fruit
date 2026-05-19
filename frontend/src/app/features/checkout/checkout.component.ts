@@ -7,7 +7,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { OrdersService } from '../../core/services/orders.service';
 import { RazorpayService } from '../../core/services/razorpay.service';
 import { AnalyticsService } from '../../core/services/analytics.service';
-import { Address, OrderProduct, PaymentMethod } from '../../core/models';
+import { Address, PaymentMethod } from '../../core/models';
 
 @Component({
   selector: 'app-checkout',
@@ -140,9 +140,9 @@ import { Address, OrderProduct, PaymentMethod } from '../../core/models';
       </div>
 
       <div class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-app bg-white border-t border-border-soft px-5 py-4 z-40">
-        <button data-testid="place-order-btn" (click)="placeOrder()" [disabled]="loading() || cart.items().length === 0 || isEditingAddress()"
+        <button data-testid="place-order-btn" (click)="placeOrder()" [disabled]="placingOrder() || loading() || cart.items().length === 0 || isEditingAddress()"
                 class="w-full h-14 bg-primary text-white rounded-btn text-[15px] font-bold shadow-green active:scale-[0.98] disabled:opacity-60">
-          {{ loading() ? 'Processing…' : 'Place Order • ₹' + cart.total().toFixed(2) }}
+          {{ placingOrder() ? 'Processing…' : 'Place Order • ₹' + cart.total().toFixed(2) }}
         </button>
       </div>
 
@@ -175,7 +175,9 @@ export class CheckoutComponent {
 
   readonly payment = signal<PaymentMethod>('cod');
   readonly loading = signal(false);
+  readonly placingOrder = signal(false);
   readonly error = signal('');
+  private placeOrderRequestId: string | null = null;
   readonly ChevronIcon = ChevronLeft; readonly MapPinIcon = MapPin;
   readonly WalletIcon = Wallet; readonly CashIcon = Banknote; readonly PencilIcon = Pencil;
   readonly AlertIcon = AlertCircle; readonly TrashIcon = Trash2;
@@ -233,20 +235,17 @@ export class CheckoutComponent {
     if (!profile) { this.error.set('Please sign in to continue'); return; }
     if (!this.address()) { this.error.set('Please add a delivery address first'); return; }
     if (this.cart.items().length === 0) return;
-    this.loading.set(true); this.error.set('');
+    if (this.placingOrder()) return;
+    this.placingOrder.set(true);
+    this.error.set('');
+    if (!this.placeOrderRequestId) {
+      this.placeOrderRequestId = crypto.randomUUID();
+    }
     try {
-      const products: OrderProduct[] = this.cart.items().map((i) => ({
-        productId: i.productId, name: i.name, thumbnail: i.thumbnail,
-        price: i.price, quantity: i.quantity, total: +(i.price * i.quantity).toFixed(2),
-      }));
       const orderId = await this.orders.create({
-        userId: profile.uid,
+        requestId: this.placeOrderRequestId,
         userName: profile.fullName,
         userPhone: profile.phone,
-        products,
-        subtotal: +this.cart.subtotal().toFixed(2),
-        deliveryFee: +this.cart.deliveryFee().toFixed(2),
-        total: +this.cart.total().toFixed(2),
         paymentMethod: this.payment(),
         deliverySlot: '7AM - 9AM',
         address: this.address()!,
@@ -269,12 +268,13 @@ export class CheckoutComponent {
       }
 
       this.analytics.track('purchase', { orderId, total: this.cart.total() });
+      this.placeOrderRequestId = null;
       this.cart.clear();
       this.router.navigate(['/order-success', orderId]);
     } catch (e) {
-      this.error.set((e as Error)?.message ?? 'Order failed');
+      this.error.set((e as Error)?.message ?? 'Please try again');
     } finally {
-      this.loading.set(false);
+      this.placingOrder.set(false);
     }
   }
 
