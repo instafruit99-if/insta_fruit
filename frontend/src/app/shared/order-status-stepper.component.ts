@@ -64,6 +64,7 @@ export class OrderStatusStepperComponent {
     { label: 'Accepted', icon: CheckSquare },
     { label: 'Preparing', icon: Package },
     { label: 'Packed', icon: Package },
+    { label: 'Rider Assigned', icon: Truck },
     { label: 'Out for Delivery', icon: Truck },
     { label: 'Delivered', icon: MapPin },
   ];

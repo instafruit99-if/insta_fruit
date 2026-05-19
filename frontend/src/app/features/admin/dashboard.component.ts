@@ -91,7 +91,9 @@ export class AdminDashboardComponent {
 
   readonly totalOrders = computed(() => this.orders().length);
   readonly totalSales = computed(() => this.orders().reduce((s, o) => s + (o.total ?? 0), 0));
-  readonly pending = computed(() => this.orders().filter((o) => ['placed', 'preparing', 'packed', 'outForDelivery'].includes(o.orderStatus)).length);
+  readonly pending = computed(() => this.orders().filter((o) =>
+    ['placed', 'accepted', 'preparing', 'packed', 'assigned_to_rider', 'outForDelivery'].includes(o.orderStatus)
+  ).length);
   readonly delivered = computed(() => this.orders().filter((o) => o.orderStatus === 'delivered').length);
 
   readonly stats = computed(() => [

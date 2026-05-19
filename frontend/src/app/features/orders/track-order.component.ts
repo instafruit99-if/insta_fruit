@@ -4,10 +4,10 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { LucideAngularModule, ChevronLeft, Phone, MessageSquare, Home } from 'lucide-angular';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { OrdersService } from '../../core/services/orders.service';
-import { Order, OrderStatus } from '../../core/models';
+import { Order } from '../../core/models';
 import { OrderStatusStepperComponent } from '../../shared/order-status-stepper.component';
-
-const STEPS: OrderStatus[] = ['placed', 'accepted', 'preparing', 'packed', 'outForDelivery', 'delivered'];
+import { normalizeOrderStatus } from '../../core/order-lifecycle/order-transition-validator';
+import { TRACK_ORDER_STEP_COUNT, trackOrderStepIndex } from '../../core/order-lifecycle/order-timeline';
 
 @Component({
   selector: 'app-track-order',
@@ -100,11 +100,10 @@ export class TrackOrderComponent {
   readonly activeIndex = computed(() => {
     const s = this.order()?.orderStatus;
     if (!s) return 0;
-    if (s === 'cancelled') return 0;
-    return Math.max(0, STEPS.indexOf(s));
+    return trackOrderStepIndex(normalizeOrderStatus(s));
   });
 
-  readonly progress = computed(() => ((this.activeIndex() + 1) / STEPS.length) * 100);
+  readonly progress = computed(() => ((this.activeIndex() + 1) / TRACK_ORDER_STEP_COUNT) * 100);
 
   readonly etaDate = computed(() => {
     const eta = this.order()?.estimatedArrivalTime as { toDate?: () => Date } | Date | undefined;

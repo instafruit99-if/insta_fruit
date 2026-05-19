@@ -1,10 +1,11 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule } from 'lucide-angular';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { OrdersService } from '../../core/services/orders.service';
 import { Order, OrderStatus } from '../../core/models';
+import { normalizeOrderStatus } from '../../core/order-lifecycle/order-transition-validator';
 
 @Component({
   selector: 'app-orders-admin',
@@ -13,6 +14,9 @@ import { Order, OrderStatus } from '../../core/models';
   template: `
     <div data-testid="orders-admin" class="space-y-5">
       <h1 class="text-[22px] font-extrabold">Orders</h1>
+      @if (statusError()) {
+        <p class="text-[12px] text-red-500 font-semibold" data-testid="admin-status-error">{{ statusError() }}</p>
+      }
       <div class="bg-white rounded-card shadow-soft overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-[13px]">
@@ -36,18 +40,19 @@ import { Order, OrderStatus } from '../../core/models';
                           [class.text-red-500]="o.paymentStatus === 'failed' || o.paymentStatus === 'refunded'">{{ o.paymentMethod }}/{{ o.paymentStatus }}</span>
                   </td>
                   <td class="px-4 py-3">
-                    <select [ngModel]="statuses.includes(o.orderStatus) ? o.orderStatus : 'placed'" (ngModelChange)="updateStatus(o, $event)"
+                    <select [ngModel]="normalizeStatus(o.orderStatus)" (ngModelChange)="updateStatus(o, $event)"
                             [attr.data-testid]="'status-' + o.orderId"
+                            [disabled]="statusOptions(o).length <= 1 || statusUpdating()"
                             class="text-[12px] px-2 py-1.5 rounded-input border border-border-soft font-semibold">
-                      @for (s of statuses; track s) { <option [value]="s">{{ s }}</option> }
+                      @for (s of statusOptions(o); track s) { <option [value]="s">{{ s }}</option> }
                     </select>
                   </td>
                   <td class="px-4 py-3 text-right flex items-center justify-end gap-3">
                     @if (o.orderStatus === 'placed') {
-                      <button (click)="accept(o)" class="text-primary text-[12px] font-semibold">Accept</button>
+                      <button (click)="accept(o)" [disabled]="statusUpdating()" class="text-primary text-[12px] font-semibold disabled:opacity-50">Accept</button>
                     }
                     @if (o.orderStatus !== 'delivered' && o.orderStatus !== 'cancelled') {
-                      <button (click)="cancel(o)" class="text-red-500 text-[12px] font-semibold">Cancel</button>
+                      <button (click)="cancel(o)" [disabled]="statusUpdating()" class="text-red-500 text-[12px] font-semibold disabled:opacity-50">Cancel</button>
                     } @else {
                       <span class="text-text-secondary text-[12px] font-semibold capitalize">{{ o.orderStatus }}</span>
                     }
@@ -64,21 +69,48 @@ import { Order, OrderStatus } from '../../core/models';
 export class OrdersAdminComponent {
   private readonly ordersSvc = inject(OrdersService);
   readonly orders = toSignal(this.ordersSvc.all(), { initialValue: [] as Order[] });
-  readonly statuses: OrderStatus[] = ['placed', 'accepted', 'preparing', 'packed', 'outForDelivery', 'delivered', 'cancelled'];
+  readonly statusError = signal('');
+  readonly statusUpdating = signal(false);
+  readonly normalizeStatus = normalizeOrderStatus;
 
-  async updateStatus(order: Order, status: OrderStatus): Promise<void> { 
-    await this.ordersSvc.updateStatus(order.orderId, status);
-    await this.ordersSvc.notifyUser(order.userId, order.orderId, status);
+  statusOptions(order: Order): OrderStatus[] {
+    const current = normalizeOrderStatus(order.orderStatus);
+    const next = this.ordersSvc.getAllowedNextStatuses(current);
+    return [current, ...next];
   }
-  async accept(order: Order): Promise<void> { 
-    await this.ordersSvc.updateStatus(order.orderId, 'accepted');
-    await this.ordersSvc.notifyUser(order.userId, order.orderId, 'accepted');
+
+  async updateStatus(order: Order, status: OrderStatus): Promise<void> {
+    const current = normalizeOrderStatus(order.orderStatus);
+    if (status === current || this.statusUpdating()) return;
+    this.statusError.set('');
+    this.statusUpdating.set(true);
+    try {
+      await this.ordersSvc.updateStatus(order.orderId, status);
+      await this.ordersSvc.notifyUser(order.userId, order.orderId, status);
+    } catch (e) {
+      this.statusError.set((e as Error).message);
+    } finally {
+      this.statusUpdating.set(false);
+    }
   }
+
+  async accept(order: Order): Promise<void> {
+    await this.updateStatus(order, 'accepted');
+  }
+
   async cancel(order: Order): Promise<void> {
+    if (this.statusUpdating()) return;
     const reason = prompt('Cancellation reason?') ?? '';
-    if (reason) {
+    if (!reason) return;
+    this.statusError.set('');
+    this.statusUpdating.set(true);
+    try {
       await this.ordersSvc.cancel(order.orderId, reason);
       await this.ordersSvc.notifyUser(order.userId, order.orderId, 'cancelled');
+    } catch (e) {
+      this.statusError.set((e as Error).message);
+    } finally {
+      this.statusUpdating.set(false);
     }
   }
 }

@@ -235,7 +235,7 @@ export class CheckoutComponent {
     if (!profile) { this.error.set('Please sign in to continue'); return; }
     if (!this.address()) { this.error.set('Please add a delivery address first'); return; }
     if (this.cart.items().length === 0) return;
-    if (this.placingOrder()) return;
+    if (this.placingOrder() || this.orders.isCheckoutInProgress()) return;
     this.placingOrder.set(true);
     this.error.set('');
     if (!this.placeOrderRequestId) {

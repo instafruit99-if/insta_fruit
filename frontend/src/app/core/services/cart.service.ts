@@ -2,6 +2,9 @@ import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { Firestore, doc, getDoc, setDoc, serverTimestamp } from '@angular/fire/firestore';
 import { AuthService } from './auth.service';
 import { CartItem, Product, productUnitPrice } from '../models';
+import { SecurityEngineService } from '../security/security-engine.service';
+import { SecurityError } from '../security/security-errors';
+import { validateCartQuantity } from '../security/security-validation';
 
 const DELIVERY_FEE_INR = 25;
 
@@ -15,6 +18,7 @@ function normalizeFavoriteIds(raw: unknown): string[] {
 export class CartService {
   private readonly db = inject(Firestore);
   private readonly auth = inject(AuthService);
+  private readonly security = inject(SecurityEngineService);
 
   private readonly _items = signal<CartItem[]>([]);
   private readonly _favorites = signal<string[]>([]);
@@ -118,7 +122,22 @@ export class CartService {
     }
   }
 
+  private guardCartMutation(quantity: number): void {
+    const user = this.auth.user();
+    if (!user) return;
+    validateCartQuantity(quantity);
+    try {
+      this.security.guardCartMutation(user.uid);
+    } catch (e) {
+      if (e instanceof SecurityError) {
+        console.warn('[cart]', e.message);
+      }
+      throw e;
+    }
+  }
+
   add(product: Product, quantity = 1): void {
+    this.guardCartMutation(quantity);
     const items = [...this._items()];
     const idx = items.findIndex((i) => i.productId === product.id);
     const item: CartItem = {
@@ -134,17 +153,23 @@ export class CartService {
   }
 
   increment(productId: string): void {
+    const item = this._items().find((i) => i.productId === productId);
+    if (item) this.guardCartMutation(item.quantity + 1);
     this._items.set(this._items().map((i) =>
       i.productId === productId ? { ...i, quantity: i.quantity + 1 } : i));
   }
 
   decrement(productId: string): void {
+    const item = this._items().find((i) => i.productId === productId);
+    if (item && item.quantity > 1) this.guardCartMutation(item.quantity - 1);
     this._items.set(this._items()
       .map((i) => i.productId === productId ? { ...i, quantity: i.quantity - 1 } : i)
       .filter((i) => i.quantity > 0));
   }
 
   remove(productId: string): void {
+    const item = this._items().find((i) => i.productId === productId);
+    if (item) this.guardCartMutation(1);
     this._items.set(this._items().filter((i) => i.productId !== productId));
   }
 

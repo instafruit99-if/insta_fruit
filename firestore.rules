@@ -43,6 +43,25 @@ service cloud.firestore {
             && request.resource.data.stock < resource.data.stock);
     }
 
+    function orderStatusTerminal(s) {
+      return s in ['delivered', 'cancelled', 'returned', 'refunded'];
+    }
+
+    function allowedOrderTransition(from, to) {
+      return (from == 'placed' && to in ['accepted', 'cancelled'])
+        || (from == 'accepted' && to in ['preparing', 'cancelled'])
+        || (from == 'preparing' && to in ['packed', 'cancelled'])
+        || (from == 'packed' && to == 'assigned_to_rider')
+        || (from == 'assigned_to_rider' && to == 'outForDelivery')
+        || (from == 'outForDelivery' && to == 'delivered');
+    }
+
+    function validLifecycleStatusUpdate() {
+      let from = resource.data.orderStatus;
+      let to = request.resource.data.orderStatus;
+      return from == to || allowedOrderTransition(from, to);
+    }
+
     function validOrderCreate() {
       let d = request.resource.data;
       return d.userId == request.auth.uid
@@ -55,7 +74,23 @@ service cloud.firestore {
         && d.total == d.subtotal + d.deliveryFee
         && d.products is list
         && d.products.size() > 0
-        && d.products.size() <= 50;
+        && d.products.size() <= 50
+        && d.userName is string && d.userName.size() > 0 && d.userName.size() <= 120
+        && d.userPhone is string && d.userPhone.size() > 0 && d.userPhone.size() <= 20;
+    }
+
+    function orderLifecycleFieldsOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['orderStatus', 'currentStatus', 'statusUpdatedAt', 'updatedAt', 'timeline', 'cancelReason']);
+    }
+
+    function validAuditLogCreate() {
+      let d = request.resource.data;
+      return d.by == request.auth.uid
+        && d.action is string
+        && d.orderId is string
+        && d.from is string
+        && d.to is string;
     }
 
     // Banners: public read; admin write.
@@ -64,9 +99,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Cart: owner-only.
+    // Cart: owner-only; bounded cart size.
     match /cart/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId)
+        && request.resource.data.userId == userId
+        && request.resource.data.items is list
+        && request.resource.data.items.size() <= 50;
     }
 
     // Orders: authenticated customers create own placed orders; admin updates status.
@@ -74,12 +113,19 @@ service cloud.firestore {
       allow create: if isSignedIn() && validOrderCreate();
       allow read: if isSignedIn()
         && (resource.data.userId == request.auth.uid || isAdmin());
-      // user can only cancel own placed order; admin can update anything.
-      allow update: if isAdmin()
+      // Admin: lifecycle fields only, valid transitions, not from terminal states.
+      // Customer: cancel own order only from early states.
+      allow update: if (isAdmin()
+        && !orderStatusTerminal(resource.data.orderStatus)
+        && request.resource.data.userId == resource.data.userId
+        && validLifecycleStatusUpdate()
+        && orderLifecycleFieldsOnly())
         || (isSignedIn()
             && resource.data.userId == request.auth.uid
             && request.resource.data.orderStatus == 'cancelled'
-            && resource.data.orderStatus in ['placed', 'preparing']);
+            && resource.data.orderStatus in ['placed', 'accepted', 'preparing']
+            && request.resource.data.userId == resource.data.userId
+            && orderLifecycleFieldsOnly());
       allow delete: if isAdmin();
     }
 
@@ -110,6 +156,13 @@ service cloud.firestore {
     // Order idempotency fingerprints: Cloud Functions only.
     match /orderIdempotency/{docId} {
       allow read, write: if false;
+    }
+
+    // Audit logs: admin create/read only; immutable.
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && validAuditLogCreate();
+      allow update, delete: if false;
     }
   }
 }

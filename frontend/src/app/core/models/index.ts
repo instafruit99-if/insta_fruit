@@ -1,4 +1,6 @@
 import { Timestamp } from '@angular/fire/firestore';
+import type { OrderLifecycleStatus } from '../order-lifecycle/order-status.enum';
+import type { OrderTimelineEntry } from '../order-lifecycle/order-lifecycle.types';
 
 export type UserRole = 'customer' | 'admin';
 
@@ -98,14 +100,8 @@ export interface Cart {
   updatedAt: Timestamp | Date;
 }
 
-export type OrderStatus =
-  | 'placed'
-  | 'accepted'
-  | 'preparing'
-  | 'packed'
-  | 'outForDelivery'
-  | 'delivered'
-  | 'cancelled';
+export type { OrderLifecycleStatus as OrderStatus } from '../order-lifecycle/order-status.enum';
+export type { OrderTimelineEntry } from '../order-lifecycle/order-lifecycle.types';
 
 export type PaymentStatus = 'pending' | 'success' | 'failed' | 'refunded';
 export type PaymentMethod = 'cod' | 'razorpay';
@@ -131,7 +127,11 @@ export interface Order {
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
   paymentId?: string;
-  orderStatus: OrderStatus;
+  orderStatus: OrderLifecycleStatus;
+  /** Mirrors orderStatus for lifecycle queries / future migrations. */
+  currentStatus?: OrderLifecycleStatus;
+  statusUpdatedAt?: Timestamp | Date;
+  timeline?: OrderTimelineEntry[];
   deliverySlot: string;
   estimatedArrivalTime: Timestamp | Date;
   address: Address;
