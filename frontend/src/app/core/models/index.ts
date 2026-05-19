@@ -1,6 +1,7 @@
 import { Timestamp } from '@angular/fire/firestore';
 import type { OrderLifecycleStatus } from '../order-lifecycle/order-status.enum';
 import type { OrderTimelineEntry } from '../order-lifecycle/order-lifecycle.types';
+import type { SavedAddress } from '../address/address.types';
 
 export type UserRole = 'customer' | 'admin';
 
@@ -36,6 +37,8 @@ export interface AppUser {
   /** Product IDs saved under `users/{uid}.favoriteProductIds` in Firestore. */
   favoriteProductIds?: string[];
   defaultAddress?: Address;
+  /** Saved delivery addresses under `users/{uid}.addresses`. */
+  addresses?: SavedAddress[];
   /** Latest GPS snapshot; does not replace a saved defaultAddress. */
   lastLocation?: LastLocation;
   isPhoneVerified: boolean;

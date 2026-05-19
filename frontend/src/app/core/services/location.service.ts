@@ -1,6 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { Functions, httpsCallable } from '@angular/fire/functions';
 import { Address, AppUser } from '../models';
+import { savedAddressToOrderAddress } from '../address/address-engine.service';
 import { AuthService } from './auth.service';
 
 const SESSION_KEY = 'instafruit_location';
@@ -31,7 +32,10 @@ export class LocationService {
   /** Home header: only saved profile address (no GPS). */
   async loadSaved(): Promise<void> {
     await this.waitForProfile();
-    const saved = this.auth.profile()?.defaultAddress;
+    const profile = this.auth.profile();
+    const savedEntry = profile?.addresses?.find((a) => a.isDefault) ?? profile?.addresses?.[0];
+    const saved = profile?.defaultAddress
+      ?? (savedEntry ? savedAddressToOrderAddress(savedEntry) : undefined);
     this.area.set(saved ? shortAreaFromAddress(saved) : 'Add address');
   }
 

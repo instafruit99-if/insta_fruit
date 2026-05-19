@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { CommonModule, Location } from '@angular/common';
 import { Router } from '@angular/router';
 import { LucideAngularModule, ChevronLeft, MapPin, Wallet, Banknote, Pencil, AlertCircle, Loader2, Trash2 } from 'lucide-angular';
@@ -7,7 +7,11 @@ import { AuthService } from '../../core/services/auth.service';
 import { OrdersService } from '../../core/services/orders.service';
 import { RazorpayService } from '../../core/services/razorpay.service';
 import { AnalyticsService } from '../../core/services/analytics.service';
-import { Address, PaymentMethod } from '../../core/models';
+import { PaymentMethod } from '../../core/models';
+import { AddressEngineService } from '../../core/address/address-engine.service';
+import { AddressError } from '../../core/address/address-errors';
+import { AddressLabelType, SavedAddress } from '../../core/address/address.types';
+import { normalizeLabel } from '../../core/address/address-validation';
 
 @Component({
   selector: 'app-checkout',
@@ -28,42 +32,67 @@ import { Address, PaymentMethod } from '../../core/models';
           <h2 class="text-[14px] font-bold text-text-primary mb-2">Delivery Address</h2>
           @if (isEditingAddress()) {
             <div class="bg-white rounded-card p-4 shadow-soft space-y-3">
-              <input #addrLabel class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="Label (e.g. Home)" [value]="address()?.label || ''">
-              <input #addrLine1 class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="Street Address" [value]="address()?.line1 || ''">
+              <select #addrType class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft">
+                <option value="home" [selected]="editLabel() === 'home'">Home</option>
+                <option value="work" [selected]="editLabel() === 'work'">Work</option>
+                <option value="other" [selected]="editLabel() === 'other'">Other</option>
+              </select>
+              <input #addrName class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="Full name" [value]="editFullName()">
+              <input #addrPhone class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="Phone (10 digits)" [value]="editPhone()">
+              <input #addrLine1 class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="Street Address" [value]="editLine1()">
+              <input #addrLine2 class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="Apartment / Floor (optional)" [value]="editLine2()">
+              <input #addrLandmark class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="Landmark (optional)" [value]="editLandmark()">
               <div class="flex gap-2">
-                <input #addrCity class="w-1/2 text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="City" [value]="address()?.city || ''">
-                <input #addrState class="w-1/2 text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="State" [value]="address()?.state || ''">
+                <input #addrCity class="w-1/2 text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="City" [value]="editCity()">
+                <input #addrState class="w-1/2 text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="State" [value]="editState()">
               </div>
-              <input #addrPin class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="Postal Code" [value]="address()?.postalCode || ''">
+              <input #addrPin class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="Pincode (6 digits)" [value]="editPincode()">
               <div class="flex gap-2 mt-2">
-                <button (click)="isEditingAddress.set(false)" class="flex-1 bg-gray-100 text-text-primary text-[13px] font-semibold py-2 rounded-xl">Cancel</button>
-                <button (click)="saveAddress(addrLabel.value, addrLine1.value, addrCity.value, addrState.value, addrPin.value)" class="flex-1 bg-primary text-white text-[13px] font-bold py-2 rounded-xl shadow-green flex items-center justify-center">
+                <button (click)="cancelEditAddress()" class="flex-1 bg-gray-100 text-text-primary text-[13px] font-semibold py-2 rounded-xl">Cancel</button>
+                <button (click)="saveAddress(addrType.value, addrName.value, addrPhone.value, addrLine1.value, addrLine2.value, addrLandmark.value, addrCity.value, addrState.value, addrPin.value)" class="flex-1 bg-primary text-white text-[13px] font-bold py-2 rounded-xl shadow-green flex items-center justify-center">
                   @if (loading()) { <lucide-icon [img]="LoaderIcon" [size]="16" class="animate-spin"></lucide-icon> } @else { Save Address }
                 </button>
               </div>
             </div>
-          } @else if (address()) {
-            <div data-testid="address-card" class="bg-white rounded-card p-4 shadow-soft flex items-start gap-3">
-              <div class="w-10 h-10 rounded-full bg-primary-light flex items-center justify-center flex-shrink-0">
-                <lucide-icon [img]="MapPinIcon" [size]="18" class="text-primary"></lucide-icon>
-              </div>
-              <div class="flex-1">
-                <p class="text-[13px] font-bold text-text-primary">{{ address()!.label }}</p>
-                <p class="text-[12px] text-text-secondary leading-relaxed mt-0.5">{{ address()!.line1 }}<br/>{{ address()!.city }}, {{ address()!.state }} {{ address()!.postalCode }}</p>
-              </div>
-                  <div class="flex flex-col gap-2 shrink-0">
-                    <button (click)="isEditingAddress.set(true)" class="w-10 h-10 rounded-full bg-white flex items-center justify-center border border-border-soft shadow-sm transition-colors active:bg-gray-50">
-                      <lucide-icon [img]="PencilIcon" [size]="16" class="text-text-secondary"></lucide-icon>
-                    </button>
-                    <button (click)="confirmDeleteAddress()" class="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center border border-red-100 shadow-sm transition-colors active:bg-red-100">
-                      <lucide-icon [img]="TrashIcon" [size]="16" class="text-red-500"></lucide-icon>
-                    </button>
+          } @else if (addresses().length > 0) {
+            <div class="space-y-2">
+              @for (addr of addresses(); track addr.id) {
+                <button type="button" (click)="selectAddress(addr)"
+                        [attr.data-testid]="'address-option-' + addr.id"
+                        class="w-full bg-white rounded-card p-4 shadow-soft flex items-start gap-3 text-left transition-all"
+                        [class.ring-2]="selectedId() === addr.id" [class.ring-primary]="selectedId() === addr.id">
+                  <div class="w-10 h-10 rounded-full bg-primary-light flex items-center justify-center flex-shrink-0">
+                    <lucide-icon [img]="MapPinIcon" [size]="18" class="text-primary"></lucide-icon>
                   </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-[13px] font-bold text-text-primary capitalize">{{ addr.label }} @if (addr.isDefault) { <span class="text-[10px] text-primary font-semibold">· Default</span> }</p>
+                    <p class="text-[12px] text-text-secondary leading-relaxed mt-0.5">{{ addr.addressLine1 }}<br/>{{ addr.city }}, {{ addr.state }} {{ addr.pincode }}</p>
+                  </div>
+                  <span class="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-1"
+                    [class.border-primary]="selectedId() === addr.id" [class.border-border-soft]="selectedId() !== addr.id">
+                    @if (selectedId() === addr.id) { <span class="w-2.5 h-2.5 rounded-full bg-primary"></span> }
+                  </span>
+                </button>
+              }
+              <div data-testid="address-card" class="bg-white rounded-card p-4 shadow-soft flex items-center justify-between gap-3">
+                <button type="button" (click)="startEditSelected()" class="text-primary text-[12px] font-semibold flex items-center gap-1">
+                  <lucide-icon [img]="PencilIcon" [size]="14"></lucide-icon> Edit
+                </button>
+                <button type="button" (click)="confirmDeleteAddress()" class="text-red-500 text-[12px] font-semibold flex items-center gap-1">
+                  <lucide-icon [img]="TrashIcon" [size]="14"></lucide-icon> Delete
+                </button>
+                <button type="button" (click)="startAddAddress()" class="text-[12px] font-semibold text-text-primary">+ Add</button>
+              </div>
             </div>
+            @if (deliveryEligibility(); as elig) {
+              <p class="text-[11px] mt-2 font-semibold" [class.text-primary]="elig.serviceable" [class.text-red-500]="!elig.serviceable" data-testid="delivery-eligibility">
+                {{ elig.message }}
+              </p>
+            }
           } @else {
             <div class="bg-white rounded-card p-4 shadow-soft flex flex-col items-center justify-center py-6 border-2 border-dashed border-border-soft">
                <p class="text-[12px] text-text-secondary mb-3 font-medium">No delivery address found</p>
-               <button (click)="isEditingAddress.set(true)" class="text-[13px] font-bold text-primary border border-primary/30 px-5 py-2.5 rounded-xl bg-primary-light hover:bg-primary/20 transition-colors">Add Address</button>
+               <button (click)="startAddAddress()" class="text-[13px] font-bold text-primary border border-primary/30 px-5 py-2.5 rounded-xl bg-primary-light hover:bg-primary/20 transition-colors">Add Address</button>
             </div>
           }
         </div>
@@ -186,25 +215,95 @@ export class CheckoutComponent {
   readonly showDeleteConfirm = signal(false);
   readonly LoaderIcon = Loader2;
 
-  readonly address = computed<Address | undefined>(() => this.auth.profile()?.defaultAddress);
+  private readonly addressEngine = inject(AddressEngineService);
 
-  async saveAddress(label: string, line1: string, city: string, state: string, postalCode: string): Promise<void> {
-    const profile = this.auth.profile();
-    if (!profile) return;
-    if (!label.trim() || !line1.trim() || !city.trim() || !state.trim() || !postalCode.trim()) {
-      this.error.set('All address fields are required');
-      return;
-    }
+  readonly addresses = this.addressEngine.addresses;
+  readonly selectedId = this.addressEngine.selectedId;
+  readonly deliveryEligibility = this.addressEngine.deliveryEligibility;
+
+  private readonly editingId = signal<string | null>(null);
+  readonly editLabel = signal<AddressLabelType>('home');
+  readonly editFullName = signal('');
+  readonly editPhone = signal('');
+  readonly editLine1 = signal('');
+  readonly editLine2 = signal('');
+  readonly editLandmark = signal('');
+  readonly editCity = signal('');
+  readonly editState = signal('');
+  readonly editPincode = signal('');
+
+  selectAddress(addr: SavedAddress): void {
+    this.addressEngine.selectAddress(addr.id);
+    void this.addressEngine.setDefault(addr.id);
     this.error.set('');
-    const newAddr: Address = {
-      label: label.trim(), line1: line1.trim(), city: city.trim(), state: state.trim(), postalCode: postalCode.trim(), country: 'India'
+  }
+
+  startAddAddress(): void {
+    const profile = this.auth.profile();
+    this.editingId.set(null);
+    this.editLabel.set('home');
+    this.editFullName.set(profile?.fullName ?? '');
+    this.editPhone.set(profile?.phone ?? '');
+    this.editLine1.set('');
+    this.editLine2.set('');
+    this.editLandmark.set('');
+    this.editCity.set('');
+    this.editState.set('Karnataka');
+    this.editPincode.set('');
+    this.isEditingAddress.set(true);
+  }
+
+  startEditSelected(): void {
+    const addr = this.addressEngine.selectedAddress();
+    if (!addr) return;
+    this.editingId.set(addr.id);
+    this.editLabel.set(addr.label);
+    this.editFullName.set(addr.fullName);
+    this.editPhone.set(addr.phone);
+    this.editLine1.set(addr.addressLine1);
+    this.editLine2.set(addr.addressLine2 ?? '');
+    this.editLandmark.set(addr.landmark ?? '');
+    this.editCity.set(addr.city);
+    this.editState.set(addr.state);
+    this.editPincode.set(addr.pincode);
+    this.isEditingAddress.set(true);
+  }
+
+  cancelEditAddress(): void {
+    this.isEditingAddress.set(false);
+    this.editingId.set(null);
+  }
+
+  async saveAddress(
+    label: string, fullName: string, phone: string, line1: string, line2: string,
+    landmark: string, city: string, state: string, pincode: string,
+  ): Promise<void> {
+    this.error.set('');
+    const input = {
+      label: normalizeLabel(label),
+      fullName,
+      phone,
+      addressLine1: line1,
+      addressLine2: line2 || undefined,
+      landmark: landmark || undefined,
+      city,
+      state,
+      pincode,
+      country: 'India',
+      isDefault: this.addresses().length === 0,
     };
     try {
       this.loading.set(true);
-      await this.auth.updateProfile(profile.uid, { defaultAddress: newAddr });
+      const id = this.editingId();
+      if (id) {
+        await this.addressEngine.updateAddress(id, input);
+      } else {
+        await this.addressEngine.addAddress(input);
+      }
       this.isEditingAddress.set(false);
+      this.editingId.set(null);
     } catch (e) {
-      this.error.set('Failed to save address');
+      this.error.set(e instanceof AddressError ? e.message : 'Failed to save address');
     } finally {
       this.loading.set(false);
     }
@@ -215,16 +314,15 @@ export class CheckoutComponent {
   }
 
   async deleteAddress(): Promise<void> {
-    const profile = this.auth.profile();
-    if (!profile) return;
-    
+    const selected = this.addressEngine.selectedAddress();
+    if (!selected) return;
     this.showDeleteConfirm.set(false);
     try {
       this.loading.set(true);
-      await this.auth.updateProfile(profile.uid, { defaultAddress: null as any });
+      await this.addressEngine.deleteAddress(selected.id);
       this.error.set('');
     } catch (e) {
-      this.error.set('Failed to delete address');
+      this.error.set(e instanceof AddressError ? e.message : 'Failed to delete address');
     } finally {
       this.loading.set(false);
     }
@@ -233,7 +331,15 @@ export class CheckoutComponent {
   async placeOrder(): Promise<void> {
     const profile = this.auth.profile();
     if (!profile) { this.error.set('Please sign in to continue'); return; }
-    if (!this.address()) { this.error.set('Please add a delivery address first'); return; }
+    if (!this.addressEngine.selectedAddress()) {
+      this.error.set('Please select delivery address.');
+      return;
+    }
+    const elig = this.deliveryEligibility();
+    if (elig && !elig.serviceable) {
+      this.error.set(elig.message);
+      return;
+    }
     if (this.cart.items().length === 0) return;
     if (this.placingOrder() || this.orders.isCheckoutInProgress()) return;
     this.placingOrder.set(true);
@@ -248,7 +354,7 @@ export class CheckoutComponent {
         userPhone: profile.phone,
         paymentMethod: this.payment(),
         deliverySlot: '7AM - 9AM',
-        address: this.address()!,
+        address: this.addressEngine.assertCheckoutReady(),
       });
 
       if (this.payment() === 'razorpay') {

@@ -15,6 +15,8 @@ import { SecurityEngineService } from '../security/security-engine.service';
 import { SecurityError } from '../security/security-errors';
 import { AuditLoggerService } from '../security/audit-logger.service';
 import { validateOrderId } from '../security/security-validation';
+import { DeliveryEligibilityService } from '../address/delivery-eligibility.service';
+import { AddressError } from '../address/address-errors';
 
 interface CreateRazorpayInput { orderId: string; amount: number; currency?: 'INR'; }
 interface CreateRazorpayResult { razorpayOrderId: string; amount: number; currency: 'INR'; }
@@ -30,6 +32,7 @@ export class OrdersService {
   private readonly lifecycle = inject(OrderLifecycleEngine);
   private readonly security = inject(SecurityEngineService);
   private readonly audit = inject(AuditLoggerService);
+  private readonly deliveryEligibility = inject(DeliveryEligibilityService);
   private readonly col = collection(this.db, 'orders');
 
   myOrders(userId: string): Observable<Order[]> {
@@ -68,6 +71,10 @@ export class OrdersService {
     },
   ): Promise<string> {
     const requestId = order.requestId ?? crypto.randomUUID();
+    const eligibility = this.deliveryEligibility.check(order.address.postalCode);
+    if (!eligibility.serviceable) {
+      throw new Error(eligibility.message || 'Delivery not available in this area.');
+    }
     try {
       const result = await this.security.guardCheckout(
         () =>
@@ -137,6 +144,9 @@ export class OrdersService {
   }
 
   private formatError(error: unknown): string {
+    if (error instanceof AddressError) {
+      return error.message;
+    }
     if (error instanceof SecurityError) {
       return SecurityEngineService.toUserMessage(error);
     }

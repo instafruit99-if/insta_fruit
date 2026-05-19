@@ -11,16 +11,24 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    function validUserAddresses() {
+      return !('addresses' in request.resource.data)
+        || (request.resource.data.addresses is list
+            && request.resource.data.addresses.size() <= 10);
+    }
+
     // Users: each user reads/writes own doc; admin reads all; admin can update role/block.
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId)
         && request.resource.data.role == 'customer'
-        && request.resource.data.uid == userId;
-      allow update: if (isOwner(userId)
+        && request.resource.data.uid == userId
+        && validUserAddresses();
+      allow update: if ((isOwner(userId)
                         && request.resource.data.role == resource.data.role
-                        && request.resource.data.isBlocked == resource.data.isBlocked)
-                    || isAdmin();
+                        && request.resource.data.isBlocked == resource.data.isBlocked
+                        && validUserAddresses())
+                    || isAdmin());
       allow delete: if isAdmin();
     }
 
