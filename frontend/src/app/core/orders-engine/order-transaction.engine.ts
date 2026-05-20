@@ -9,7 +9,9 @@ import {
 } from '@angular/fire/firestore';
 import { Auth } from '@angular/fire/auth';
 import { Address, CartItem } from '../models';
-import { CreateOrderInput, CreateOrderResult, DELIVERY_FEE_INR, TransactionProductData } from './order-types';
+import { buildOrderDeliveryFields } from '../delivery/delivery-engine.service';
+import { calculateDeliveryFee } from '../delivery/delivery-fee.service';
+import { CreateOrderInput, CreateOrderResult, TransactionProductData } from './order-types';
 import {
   OrderTransactionError,
   orderTransactionError,
@@ -155,9 +157,14 @@ export class OrderTransactionEngine {
         });
 
         subtotal = +subtotal.toFixed(2);
-        const deliveryFee = DELIVERY_FEE_INR;
+        const deliveryMeta = buildOrderDeliveryFields(
+          subtotal,
+          input.deliverySlot,
+          true,
+        );
+        const deliveryFee = calculateDeliveryFee(subtotal);
         const total = +(subtotal + deliveryFee).toFixed(2);
-        const eta = Timestamp.fromDate(new Date(Date.now() + 30 * 60 * 1000));
+        const eta = Timestamp.fromDate(deliveryMeta.estimatedArrivalTime);
 
         tx.set(orderRef, {
           userId: uid,
@@ -170,8 +177,11 @@ export class OrderTransactionEngine {
           paymentMethod: input.paymentMethod,
           paymentStatus: 'pending',
           orderStatus: 'placed',
-          deliverySlot: input.deliverySlot,
+          deliverySlot: deliveryMeta.deliverySlot,
           estimatedArrivalTime: eta,
+          estimatedDeliveryTime: deliveryMeta.estimatedDeliveryTime,
+          estimatedPreparationTime: deliveryMeta.estimatedPreparationTime,
+          deliveryEligible: deliveryMeta.deliveryEligible,
           address: addressToFirestore(input.address),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),

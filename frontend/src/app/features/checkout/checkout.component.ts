@@ -1,5 +1,6 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule, Location } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { LucideAngularModule, ChevronLeft, MapPin, Wallet, Banknote, Pencil, AlertCircle, Loader2, Trash2 } from 'lucide-angular';
 import { CartService } from '../../core/services/cart.service';
@@ -12,11 +13,14 @@ import { AddressEngineService } from '../../core/address/address-engine.service'
 import { AddressError } from '../../core/address/address-errors';
 import { AddressLabelType, SavedAddress } from '../../core/address/address.types';
 import { normalizeLabel } from '../../core/address/address-validation';
+import { DeliveryEngineService } from '../../core/delivery/delivery-engine.service';
+import { DeliverySlotId } from '../../core/delivery/delivery-config.constants';
+import { DeliveryError } from '../../core/delivery/delivery-errors';
 
 @Component({
   selector: 'app-checkout',
   standalone: true,
-  imports: [CommonModule, LucideAngularModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   template: `
     <div data-testid="checkout-page" class="min-h-screen bg-[#FAFAFA] pb-32">
       <div class="px-5 pt-12 pb-4 flex items-center justify-between bg-white border-b border-border-soft/50">
@@ -99,8 +103,15 @@ import { normalizeLabel } from '../../core/address/address-validation';
 
         <div>
           <h2 class="text-[14px] font-bold text-text-primary mb-2">Delivery Slot</h2>
-          <div class="bg-white rounded-card p-4 shadow-soft text-[13px] font-semibold text-text-primary">
-            7AM – 9AM (next available)
+          <div class="bg-white rounded-card p-4 shadow-soft">
+            <select data-testid="delivery-slot-select" [ngModel]="selectedSlot()" (ngModelChange)="selectedSlot.set($event)"
+                    class="w-full text-[13px] font-semibold text-text-primary px-2 py-1 rounded-input border border-border-soft bg-white">
+              @for (slot of availableSlots(); track slot.id) {
+                <option [value]="slot.id" [disabled]="!slot.available">
+                  {{ slot.label }}@if (slot.isNextAvailable) { (next available) }
+                </option>
+              }
+            </select>
           </div>
         </div>
 
@@ -146,6 +157,9 @@ import { normalizeLabel } from '../../core/address/address-validation';
           <div class="bg-white rounded-card p-4 shadow-soft space-y-2">
             <div class="flex justify-between text-[13px]"><span class="text-text-secondary">Subtotal</span><span class="font-semibold">₹{{ cart.subtotal().toFixed(2) }}</span></div>
             <div class="flex justify-between text-[13px]"><span class="text-text-secondary">Delivery fee</span><span class="font-semibold">₹{{ cart.deliveryFee().toFixed(2) }}</span></div>
+            @if (freeDeliveryMessage(); as msg) {
+              <p class="text-[11px] text-primary font-semibold" data-testid="free-delivery-hint">{{ msg }}</p>
+            }
             <div class="flex justify-between text-[13px]"><span class="text-text-secondary">Discount</span><span class="font-semibold text-primary">- ₹0.00</span></div>
             <div class="h-px bg-border-soft my-2"></div>
             <div class="flex justify-between text-[15px] font-extrabold"><span>Total</span><span class="text-primary">₹{{ cart.total().toFixed(2) }}</span></div>
@@ -216,6 +230,15 @@ export class CheckoutComponent {
   readonly LoaderIcon = Loader2;
 
   private readonly addressEngine = inject(AddressEngineService);
+  private readonly deliveryEngine = inject(DeliveryEngineService);
+
+  readonly selectedSlot = signal<DeliverySlotId>(this.deliveryEngine.defaultSlot());
+  readonly availableSlots = computed(() => this.deliveryEngine.getAvailableSlots());
+  readonly deliveryQuote = computed(() => this.deliveryEngine.quoteCheckout(this.cart.subtotal()));
+  readonly freeDeliveryMessage = computed(() => {
+    if (this.cart.items().length === 0) return null;
+    return this.deliveryEngine.freeDeliveryMessage(this.deliveryQuote());
+  });
 
   readonly addresses = this.addressEngine.addresses;
   readonly selectedId = this.addressEngine.selectedId;
@@ -359,14 +382,21 @@ export class CheckoutComponent {
       this.placeOrderRequestId = crypto.randomUUID();
     }
     try {
+      const address = this.addressEngine.assertCheckoutReady();
+      this.deliveryEngine.validateCheckout({
+        subtotal: this.cart.subtotal(),
+        pincode: address.postalCode,
+        deliverySlot: this.selectedSlot(),
+      });
       await this.cart.ensurePersisted();
       const orderId = await this.orders.create({
         requestId: this.placeOrderRequestId,
         userName,
         userPhone,
         paymentMethod: this.payment(),
-        deliverySlot: '7AM - 9AM',
-        address: this.addressEngine.assertCheckoutReady(),
+        deliverySlot: this.selectedSlot(),
+        subtotal: this.cart.subtotal(),
+        address,
       });
 
       const paymentResult = await this.payments.processCheckout({
@@ -387,7 +417,11 @@ export class CheckoutComponent {
       this.cart.clear();
       this.router.navigate(['/order-success', orderId]);
     } catch (e) {
-      this.error.set(PaymentService.toUserMessage(e));
+      if (e instanceof DeliveryError || e instanceof AddressError) {
+        this.error.set(e.message);
+      } else {
+        this.error.set(PaymentService.toUserMessage(e));
+      }
     } finally {
       this.placingOrder.set(false);
     }

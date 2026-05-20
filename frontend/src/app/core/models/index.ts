@@ -137,6 +137,10 @@ export interface Order {
   timeline?: OrderTimelineEntry[];
   deliverySlot: string;
   estimatedArrivalTime: Timestamp | Date;
+  /** Human-readable delivery window label (e.g. "7AM – 9AM"). */
+  estimatedDeliveryTime?: string;
+  estimatedPreparationTime?: number;
+  deliveryEligible?: boolean;
   address: Address;
   cancelReason?: string;
   createdAt: Timestamp | Date;

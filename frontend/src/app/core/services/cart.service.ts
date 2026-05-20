@@ -5,8 +5,7 @@ import { CartItem, Product, productUnitPrice } from '../models';
 import { SecurityEngineService } from '../security/security-engine.service';
 import { SecurityError } from '../security/security-errors';
 import { validateCartQuantity } from '../security/security-validation';
-
-const DELIVERY_FEE_INR = 25;
+import { DeliveryFeeService } from '../delivery/delivery-fee.service';
 
 /** Firestore may contain junk entries like `[""]`; keep only non-empty product IDs. */
 function normalizeFavoriteIds(raw: unknown): string[] {
@@ -19,6 +18,7 @@ export class CartService {
   private readonly db = inject(Firestore);
   private readonly auth = inject(AuthService);
   private readonly security = inject(SecurityEngineService);
+  private readonly deliveryFees = inject(DeliveryFeeService);
 
   private readonly _items = signal<CartItem[]>([]);
   private readonly _favorites = signal<string[]>([]);
@@ -33,8 +33,14 @@ export class CartService {
   readonly count = computed(() => this._items().reduce((s, i) => s + i.quantity, 0));
   readonly subtotal = computed(() =>
     this._items().reduce((s, i) => s + i.price * i.quantity, 0));
-  readonly deliveryFee = computed(() => (this._items().length > 0 ? DELIVERY_FEE_INR : 0));
-  readonly total = computed(() => this.subtotal() + this.deliveryFee());
+  readonly deliveryFee = computed(() => {
+    if (this._items().length === 0) return 0;
+    return this.deliveryFees.quote(this.subtotal()).deliveryFee;
+  });
+  readonly total = computed(() => {
+    if (this._items().length === 0) return 0;
+    return this.deliveryFees.quote(this.subtotal()).total;
+  });
 
   constructor() {
     // Cart: Firestore only — collection `cart/{uid}` (no localStorage / sessionStorage).

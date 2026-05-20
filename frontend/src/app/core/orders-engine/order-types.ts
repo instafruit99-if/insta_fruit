@@ -1,6 +1,8 @@
 import { Address, CartItem, OrderProduct, PaymentMethod } from '../models';
 
-export const DELIVERY_FEE_INR = 25;
+/** @deprecated Use delivery engine {@link calculateDeliveryFee} */
+export { DEFAULT_DELIVERY_FEE_INR as DELIVERY_FEE_INR } from '../delivery/delivery-config.constants';
+export { calculateDeliveryFee } from '../delivery/delivery-fee.service';
 
 export interface CreateOrderInput {
   requestId: string;

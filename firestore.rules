@@ -84,16 +84,26 @@ service cloud.firestore {
       return from == to || allowedOrderTransition(from, to);
     }
 
+    function validDeliveryFeeOnCreate() {
+      let d = request.resource.data;
+      let sub = d.subtotal;
+      let fee = d.deliveryFee;
+      return (sub >= 499 && fee == 0) || (sub < 499 && fee == 25);
+    }
+
     function validOrderCreate() {
       let d = request.resource.data;
       return d.userId == request.auth.uid
         && d.paymentStatus == 'pending'
         && d.orderStatus == 'placed'
         && d.paymentMethod in ['cod', 'razorpay']
-        && d.subtotal is number && d.subtotal >= 0
+        && d.subtotal is number && d.subtotal >= 99
         && d.deliveryFee is number && d.deliveryFee >= 0
+        && validDeliveryFeeOnCreate()
         && d.total is number && d.total >= 0
         && d.total == d.subtotal + d.deliveryFee
+        && d.deliverySlot is string && d.deliverySlot.size() > 0
+        && (!('deliveryEligible' in d) || d.deliveryEligible == true)
         && d.products is list
         && d.products.size() > 0
         && d.products.size() <= 50
@@ -104,6 +114,13 @@ service cloud.firestore {
     function orderLifecycleFieldsOnly() {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['orderStatus', 'currentStatus', 'statusUpdatedAt', 'updatedAt', 'timeline', 'cancelReason']);
+    }
+
+    function orderDeliveryFieldsUnchanged() {
+      return request.resource.data.deliveryFee == resource.data.deliveryFee
+        && request.resource.data.deliverySlot == resource.data.deliverySlot
+        && request.resource.data.subtotal == resource.data.subtotal
+        && request.resource.data.total == resource.data.total;
     }
 
     function validAuditLogCreate() {
@@ -142,13 +159,15 @@ service cloud.firestore {
         && !orderStatusTerminal(resource.data.orderStatus)
         && request.resource.data.userId == resource.data.userId
         && validLifecycleStatusUpdate()
-        && orderLifecycleFieldsOnly())
+        && orderLifecycleFieldsOnly()
+        && orderDeliveryFieldsUnchanged())
         || (isSignedIn()
             && resource.data.userId == request.auth.uid
             && request.resource.data.orderStatus == 'cancelled'
             && resource.data.orderStatus in ['placed', 'accepted', 'preparing']
             && request.resource.data.userId == resource.data.userId
-            && orderLifecycleFieldsOnly());
+            && orderLifecycleFieldsOnly()
+            && orderDeliveryFieldsUnchanged());
       allow delete: if isAdmin();
     }
 

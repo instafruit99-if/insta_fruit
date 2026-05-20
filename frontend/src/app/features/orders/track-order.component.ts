@@ -113,7 +113,11 @@ export class TrackOrderComponent {
       : (eta as Date);
   });
 
-  readonly etaTime = computed(() => this.etaDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+  readonly etaTime = computed(() => {
+    const label = this.order()?.estimatedDeliveryTime;
+    if (label) return label;
+    return this.etaDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  });
   readonly remainingMin = computed(() => Math.max(0, Math.ceil((this.etaDate().getTime() - Date.now()) / 60000)));
 
   back(): void { this.location.back(); }

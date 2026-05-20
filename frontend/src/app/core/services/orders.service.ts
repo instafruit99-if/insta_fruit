@@ -15,8 +15,9 @@ import { SecurityEngineService } from '../security/security-engine.service';
 import { SecurityError } from '../security/security-errors';
 import { AuditLoggerService } from '../security/audit-logger.service';
 import { validateOrderId } from '../security/security-validation';
-import { DeliveryEligibilityService } from '../address/delivery-eligibility.service';
 import { AddressError } from '../address/address-errors';
+import { DeliveryEngineService } from '../delivery/delivery-engine.service';
+import { DeliveryError } from '../delivery/delivery-errors';
 import { PaymentEngineService } from '../payment/payment-engine.service';
 import { PaymentError } from '../payment/payment-errors';
 import { NotificationService } from './notification.service';
@@ -35,7 +36,7 @@ export class OrdersService {
   private readonly lifecycle = inject(OrderLifecycleEngine);
   private readonly security = inject(SecurityEngineService);
   private readonly audit = inject(AuditLoggerService);
-  private readonly deliveryEligibility = inject(DeliveryEligibilityService);
+  private readonly delivery = inject(DeliveryEngineService);
   private readonly notifications = inject(NotificationService);
   private readonly auth = inject(Auth);
   private readonly col = collection(this.db, 'orders');
@@ -73,19 +74,21 @@ export class OrdersService {
   async create(
     order: Pick<Order, 'userName' | 'userPhone' | 'paymentMethod' | 'deliverySlot' | 'address'> & {
       requestId?: string;
+      subtotal: number;
     },
   ): Promise<string> {
     const requestId = order.requestId ?? crypto.randomUUID();
-    const eligibility = this.deliveryEligibility.check(order.address.postalCode);
-    if (!eligibility.serviceable) {
-      throw new Error(eligibility.message || 'Delivery not available in this area.');
-    }
+    const deliveryFields = this.delivery.buildOrderFields(
+      order.subtotal,
+      order.deliverySlot,
+      order.address.postalCode,
+    );
     const userPhone = order.userPhone.replace(/\D/g, '').slice(-10);
     const payload = {
       userName: order.userName.trim(),
       userPhone,
       paymentMethod: order.paymentMethod,
-      deliverySlot: order.deliverySlot,
+      deliverySlot: deliveryFields.deliverySlot,
       address: {
         ...order.address,
         country: order.address.country?.trim() || 'India',
@@ -179,6 +182,9 @@ export class OrdersService {
       return PaymentEngineService.toUserMessage(error);
     }
     if (error instanceof AddressError) {
+      return error.message;
+    }
+    if (error instanceof DeliveryError) {
       return error.message;
     }
     if (error instanceof SecurityError) {
