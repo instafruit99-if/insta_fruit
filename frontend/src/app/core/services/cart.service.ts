@@ -175,6 +175,19 @@ export class CartService {
 
   clear(): void { this._items.set([]); }
 
+  /** Ensure cart doc exists in Firestore before checkout transaction reads it. */
+  async ensurePersisted(): Promise<void> {
+    const user = this.auth.user();
+    if (!user) {
+      throw new Error('Please sign in to continue');
+    }
+    await setDoc(
+      doc(this.db, `cart/${user.uid}`),
+      { userId: user.uid, items: this._items(), updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+  }
+
   toggleFavorite(productId: string): void {
     const favs = this._favorites();
     this._favorites.set(favs.includes(productId) ? favs.filter((id) => id !== productId) : [...favs, productId]);

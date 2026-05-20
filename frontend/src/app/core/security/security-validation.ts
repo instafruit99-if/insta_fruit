@@ -16,12 +16,15 @@ function isValidPaymentMethod(value: unknown): boolean {
   return value === 'cod' || value === 'razorpay';
 }
 
+const PHONE_RE = /^[6-9]\d{9}$/;
+
 export function validateCreateOrderInput(input: CreateOrderSecurityInput): void {
   if (!isNonEmptyString(input.userName, MAX_NAME_LEN)) {
-    throw securityError('INVALID_REQUEST');
+    throw securityError('INVALID_REQUEST', 'Please enter your name.');
   }
-  if (!isNonEmptyString(input.userPhone, MAX_PHONE_LEN)) {
-    throw securityError('INVALID_REQUEST');
+  const phoneDigits = String(input.userPhone ?? '').replace(/\D/g, '').slice(-10);
+  if (!PHONE_RE.test(phoneDigits)) {
+    throw securityError('INVALID_REQUEST', 'Please enter a valid 10-digit mobile number.');
   }
   if (!isNonEmptyString(input.deliverySlot, MAX_SLOT_LEN)) {
     throw securityError('INVALID_REQUEST');
@@ -38,9 +41,9 @@ export function validateCreateOrderInput(input: CreateOrderSecurityInput): void 
     !isNonEmptyString(a.city, MAX_ADDRESS_LEN) ||
     !isNonEmptyString(a.state, MAX_ADDRESS_LEN) ||
     !isNonEmptyString(a.postalCode, MAX_POSTAL_LEN) ||
-    !isNonEmptyString(a.country, MAX_ADDRESS_LEN)
+    !isNonEmptyString(a.country || 'India', MAX_ADDRESS_LEN)
   ) {
-    throw securityError('INVALID_REQUEST');
+    throw securityError('INVALID_REQUEST', 'Please complete your delivery address.');
   }
 }
 

@@ -21,6 +21,6 @@ export class OrderTransactionError extends Error {
   }
 }
 
-export function orderTransactionError(code: OrderErrorCode): OrderTransactionError {
-  return new OrderTransactionError(code);
+export function orderTransactionError(code: OrderErrorCode, message?: string): OrderTransactionError {
+  return new OrderTransactionError(code, message);
 }

@@ -8,7 +8,7 @@ import {
   serverTimestamp,
 } from '@angular/fire/firestore';
 import { Auth } from '@angular/fire/auth';
-import { CartItem } from '../models';
+import { Address, CartItem } from '../models';
 import { CreateOrderInput, CreateOrderResult, DELIVERY_FEE_INR, TransactionProductData } from './order-types';
 import {
   OrderTransactionError,
@@ -19,6 +19,23 @@ import {
   validateCartLineItems,
   validateCreateOrderPayload,
 } from './order-validation';
+
+/** Firestore rejects undefined in nested maps. */
+function addressToFirestore(address: Address): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    label: address.label,
+    line1: address.line1,
+    city: address.city,
+    state: address.state,
+    postalCode: address.postalCode,
+    country: address.country || 'India',
+  };
+  if (address.line2) row['line2'] = address.line2;
+  if (address.locality) row['locality'] = address.locality;
+  if (address.phone) row['phone'] = address.phone;
+  if (address.coordinates) row['coordinates'] = address.coordinates;
+  return row;
+}
 
 function aggregateCartQuantities(items: CartItem[]): Map<string, number> {
   const quantities = new Map<string, number>();
@@ -155,20 +172,31 @@ export class OrderTransactionEngine {
           orderStatus: 'placed',
           deliverySlot: input.deliverySlot,
           estimatedArrivalTime: eta,
-          address: input.address,
+          address: addressToFirestore(input.address),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
+
+        tx.set(cartRef, { userId: uid, items: [], updatedAt: serverTimestamp() }, { merge: true });
 
         return orderRef.id;
       });
 
       return { orderId };
     } catch (error) {
+      console.error('[OrderTransaction] failed', error);
       if (error instanceof OrderTransactionError) {
         throw error;
       }
-      throw orderTransactionError('TRANSACTION_FAILED');
+      const code = (error as { code?: string })?.code;
+      if (code === 'permission-denied') {
+        throw orderTransactionError(
+          'TRANSACTION_FAILED',
+          'Could not place order. Deploy latest Firestore rules and try again.',
+        );
+      }
+      const msg = error instanceof Error ? error.message : '';
+      throw orderTransactionError('TRANSACTION_FAILED', msg || undefined);
     }
   }
 }

@@ -67,7 +67,7 @@ export function savedAddressToOrderAddress(saved: SavedAddress): Address {
     city: saved.city,
     state: saved.state,
     postalCode: saved.pincode,
-    country: saved.country,
+    country: saved.country || 'India',
     phone: saved.phone,
     coordinates: saved.coordinates,
   };

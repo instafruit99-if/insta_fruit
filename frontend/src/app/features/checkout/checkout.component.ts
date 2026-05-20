@@ -341,6 +341,17 @@ export class CheckoutComponent {
       return;
     }
     if (this.cart.items().length === 0) return;
+    const selected = this.addressEngine.selectedAddress()!;
+    const userName = (selected.fullName || profile.fullName).trim();
+    const userPhone = (selected.phone || profile.phone).replace(/\D/g, '').slice(-10);
+    if (!userName) {
+      this.error.set('Please enter your name on the delivery address.');
+      return;
+    }
+    if (!/^[6-9]\d{9}$/.test(userPhone)) {
+      this.error.set('Please add a valid 10-digit mobile number on your delivery address.');
+      return;
+    }
     if (this.placingOrder() || this.orders.isCheckoutInProgress() || this.payments.isPaymentInProgress()) return;
     this.placingOrder.set(true);
     this.error.set('');
@@ -348,10 +359,11 @@ export class CheckoutComponent {
       this.placeOrderRequestId = crypto.randomUUID();
     }
     try {
+      await this.cart.ensurePersisted();
       const orderId = await this.orders.create({
         requestId: this.placeOrderRequestId,
-        userName: profile.fullName,
-        userPhone: profile.phone,
+        userName,
+        userPhone,
         paymentMethod: this.payment(),
         deliverySlot: '7AM - 9AM',
         address: this.addressEngine.assertCheckoutReady(),
@@ -362,8 +374,8 @@ export class CheckoutComponent {
         userId: profile.uid,
         amount: +this.cart.total().toFixed(2),
         method: this.payment(),
-        userName: profile.fullName,
-        userPhone: profile.phone,
+        userName,
+        userPhone,
       });
 
       if (!paymentResult.completed) {

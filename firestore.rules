@@ -110,7 +110,8 @@ service cloud.firestore {
     // Cart: owner-only; bounded cart size.
     match /cart/{userId} {
       allow read: if isOwner(userId);
-      allow write: if isOwner(userId)
+      allow delete: if isOwner(userId);
+      allow create, update: if isOwner(userId)
         && request.resource.data.userId == userId
         && request.resource.data.items is list
         && request.resource.data.items.size() <= 50;

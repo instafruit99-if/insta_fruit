@@ -80,24 +80,25 @@ export class OrdersService {
     if (!eligibility.serviceable) {
       throw new Error(eligibility.message || 'Delivery not available in this area.');
     }
+    const userPhone = order.userPhone.replace(/\D/g, '').slice(-10);
+    const payload = {
+      userName: order.userName.trim(),
+      userPhone,
+      paymentMethod: order.paymentMethod,
+      deliverySlot: order.deliverySlot,
+      address: {
+        ...order.address,
+        country: order.address.country?.trim() || 'India',
+      },
+    };
     try {
       const result = await this.security.guardCheckout(
         () =>
           this.orderEngine.createOrder({
             requestId,
-            userName: order.userName,
-            userPhone: order.userPhone,
-            paymentMethod: order.paymentMethod,
-            deliverySlot: order.deliverySlot,
-            address: order.address,
+            ...payload,
           }),
-        {
-          userName: order.userName,
-          userPhone: order.userPhone,
-          paymentMethod: order.paymentMethod,
-          deliverySlot: order.deliverySlot,
-          address: order.address,
-        },
+        payload,
       );
       const orderId = result.orderId;
       const uid = this.auth.currentUser?.uid;

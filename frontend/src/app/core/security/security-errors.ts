@@ -19,6 +19,6 @@ export class SecurityError extends Error {
   }
 }
 
-export function securityError(code: SecurityErrorCode): SecurityError {
-  return new SecurityError(code);
+export function securityError(code: SecurityErrorCode, message?: string): SecurityError {
+  return new SecurityError(code, message);
 }
