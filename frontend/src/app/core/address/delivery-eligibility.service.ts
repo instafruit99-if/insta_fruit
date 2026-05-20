@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { DELIVERY_ZONES, SUPPORTED_PINCODES } from './address.constants';
+import { DELIVERY_ZONES, isRaipurDistrictPincode } from './address.constants';
 import { DeliveryEligibilityResult } from './address.types';
 import { validatePincode } from './address-validation';
 
@@ -20,20 +20,15 @@ export class DeliveryEligibilityService {
       };
     }
 
-    const zone = DELIVERY_ZONES.find((z) => z.pincodes.includes(normalized));
-    if (zone) {
+    if (isRaipurDistrictPincode(normalized)) {
+      const zone = DELIVERY_ZONES.find((z) => z.pincodes.includes(normalized)) ?? DELIVERY_ZONES[0];
       return {
         serviceable: true,
-        zoneId: zone.id,
-        zoneName: zone.name,
-        message: `Delivery available in ${zone.name}.`,
-      };
-    }
-
-    if ((SUPPORTED_PINCODES as readonly string[]).includes(normalized)) {
-      return {
-        serviceable: true,
-        message: 'Delivery available in your area.',
+        zoneId: zone?.id,
+        zoneName: zone?.name,
+        message: zone
+          ? `Delivery available in ${zone.name}, Chhattisgarh.`
+          : 'Delivery available in Raipur, Chhattisgarh.',
       };
     }
 

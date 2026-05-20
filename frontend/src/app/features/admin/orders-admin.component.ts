@@ -86,7 +86,6 @@ export class OrdersAdminComponent {
     this.statusUpdating.set(true);
     try {
       await this.ordersSvc.updateStatus(order.orderId, status);
-      await this.ordersSvc.notifyUser(order.userId, order.orderId, status);
     } catch (e) {
       this.statusError.set((e as Error).message);
     } finally {
@@ -106,7 +105,6 @@ export class OrdersAdminComponent {
     this.statusUpdating.set(true);
     try {
       await this.ordersSvc.cancel(order.orderId, reason);
-      await this.ordersSvc.notifyUser(order.userId, order.orderId, 'cancelled');
     } catch (e) {
       this.statusError.set((e as Error).message);
     } finally {

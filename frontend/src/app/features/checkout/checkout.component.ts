@@ -247,8 +247,8 @@ export class CheckoutComponent {
     this.editLine1.set('');
     this.editLine2.set('');
     this.editLandmark.set('');
-    this.editCity.set('');
-    this.editState.set('Karnataka');
+    this.editCity.set('Raipur');
+    this.editState.set('Chhattisgarh');
     this.editPincode.set('');
     this.isEditingAddress.set(true);
   }

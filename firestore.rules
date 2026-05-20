@@ -198,5 +198,33 @@ service cloud.firestore {
       allow create: if isAdmin() && validAuditLogCreate();
       allow update, delete: if false;
     }
+
+    function validNotificationCreate() {
+      let d = request.resource.data;
+      return d.userId is string
+        && d.title is string
+        && d.message is string
+        && d.isRead == false
+        && d.type is string
+        && d.deduplicationKey is string;
+    }
+
+    function validNotificationReadUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])
+        && request.resource.data.isRead == true;
+    }
+
+    // Notifications: owner read/update read flag; admin may create customer/admin notifications.
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn()
+        && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn()
+        && validNotificationCreate()
+        && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && validNotificationReadUpdate();
+      allow delete: if isAdmin();
+    }
   }
 }

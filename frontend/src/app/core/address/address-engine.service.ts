@@ -20,6 +20,43 @@ function ensureSingleDefault(list: SavedAddress[]): SavedAddress[] {
   return list.map((a, i) => ({ ...a, isDefault: i === defaultIdx }));
 }
 
+/** Firestore rejects `undefined` in nested maps — omit optional fields. */
+function savedAddressToFirestore(saved: SavedAddress): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    id: saved.id,
+    label: saved.label,
+    fullName: saved.fullName,
+    phone: saved.phone,
+    addressLine1: saved.addressLine1,
+    city: saved.city,
+    state: saved.state,
+    pincode: saved.pincode,
+    country: saved.country,
+    isDefault: saved.isDefault,
+  };
+  if (saved.addressLine2) row['addressLine2'] = saved.addressLine2;
+  if (saved.landmark) row['landmark'] = saved.landmark;
+  if (saved.coordinates) row['coordinates'] = saved.coordinates;
+  return row;
+}
+
+function defaultAddressToFirestore(saved: SavedAddress): Record<string, unknown> {
+  const a = savedAddressToOrderAddress(saved);
+  const row: Record<string, unknown> = {
+    label: a.label,
+    line1: a.line1,
+    city: a.city,
+    state: a.state,
+    postalCode: a.postalCode,
+    country: a.country,
+  };
+  if (a.line2) row['line2'] = a.line2;
+  if (a.locality) row['locality'] = a.locality;
+  if (a.phone) row['phone'] = a.phone;
+  if (a.coordinates) row['coordinates'] = a.coordinates;
+  return row;
+}
+
 /** Maps saved address → order/checkout `Address` shape. */
 export function savedAddressToOrderAddress(saved: SavedAddress): Address {
   return {
@@ -246,11 +283,14 @@ export class AddressEngineService {
     const defaultOne = normalized.find((a) => a.isDefault);
     try {
       await this.auth.updateProfile(uid, {
-        addresses: normalized,
-        defaultAddress: defaultOne ? savedAddressToOrderAddress(defaultOne) : undefined,
+        addresses: normalized.map((a) => savedAddressToFirestore(a) as unknown as SavedAddress),
+        ...(defaultOne
+          ? { defaultAddress: defaultAddressToFirestore(defaultOne) as unknown as Address }
+          : {}),
       });
       this._addresses.set(normalized);
-    } catch {
+    } catch (e) {
+      console.error('[AddressEngine] persist failed', e);
       throw addressError('SAVE_FAILED');
     }
   }

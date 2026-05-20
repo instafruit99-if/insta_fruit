@@ -1,9 +1,9 @@
 import { Injectable, inject } from '@angular/core';
-import { Firestore, collection, collectionData, doc, docData, addDoc, getDoc, updateDoc,
-  query, where, orderBy, serverTimestamp } from '@angular/fire/firestore';
+import { Auth } from '@angular/fire/auth';
+import { Firestore, collection, collectionData, doc, docData, getDoc,
+  query, where, orderBy } from '@angular/fire/firestore';
 import { Functions, httpsCallable } from '@angular/fire/functions';
 import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
 import { Order, OrderStatus } from '../models';
 import { OrderTransactionEngine } from '../orders-engine/order-transaction.engine';
 import { OrderTransactionError } from '../orders-engine/order-errors';
@@ -17,8 +17,9 @@ import { AuditLoggerService } from '../security/audit-logger.service';
 import { validateOrderId } from '../security/security-validation';
 import { DeliveryEligibilityService } from '../address/delivery-eligibility.service';
 import { AddressError } from '../address/address-errors';
-import { PaymentError } from '../payment/payment-errors';
 import { PaymentEngineService } from '../payment/payment-engine.service';
+import { PaymentError } from '../payment/payment-errors';
+import { NotificationService } from './notification.service';
 
 interface CreateRazorpayInput { orderId: string; amount: number; currency?: 'INR'; }
 interface CreateRazorpayResult { razorpayOrderId: string; amount: number; currency: 'INR'; }
@@ -35,6 +36,8 @@ export class OrdersService {
   private readonly security = inject(SecurityEngineService);
   private readonly audit = inject(AuditLoggerService);
   private readonly deliveryEligibility = inject(DeliveryEligibilityService);
+  private readonly notifications = inject(NotificationService);
+  private readonly auth = inject(Auth);
   private readonly col = collection(this.db, 'orders');
 
   myOrders(userId: string): Observable<Order[]> {
@@ -96,7 +99,12 @@ export class OrdersService {
           address: order.address,
         },
       );
-      return result.orderId;
+      const orderId = result.orderId;
+      const uid = this.auth.currentUser?.uid;
+      if (uid) {
+        void this.notifications.onOrderPlaced(uid, orderId);
+      }
+      return orderId;
     } catch (e) {
       throw new Error(this.formatError(e));
     }
@@ -106,10 +114,12 @@ export class OrdersService {
     validateOrderId(orderId);
     try {
       await this.security.guardOrderStatusUpdate(async () => {
-        const from = await this.readOrderStatus(orderId);
+        const meta = await this.readOrderMeta(orderId);
+        const from = meta.status;
         await this.lifecycle.transition(orderId, orderStatus);
         if (from !== orderStatus) {
           await this.audit.logOrderStatusUpdated({ orderId, from, to: orderStatus });
+          await this.notifications.notifyUser(meta.userId, orderId, orderStatus);
         }
       });
     } catch (e) {
@@ -120,7 +130,8 @@ export class OrdersService {
   async cancel(orderId: string, reason: string): Promise<void> {
     try {
       await this.security.guardOrderCancel(orderId, reason, async () => {
-        const from = await this.readOrderStatus(orderId);
+        const meta = await this.readOrderMeta(orderId);
+        const from = meta.status;
         await this.lifecycle.transition(orderId, 'cancelled', reason);
         if (from !== 'cancelled') {
           await this.audit.logOrderStatusUpdated({
@@ -130,6 +141,7 @@ export class OrdersService {
             action: 'order_cancelled',
             reason,
           });
+          await this.notifications.notifyUser(meta.userId, orderId, 'cancelled');
         }
       });
     } catch (e) {
@@ -137,12 +149,28 @@ export class OrdersService {
     }
   }
 
-  private async readOrderStatus(orderId: string): Promise<OrderLifecycleStatus> {
+  private async readOrderMeta(orderId: string): Promise<{ userId: string; status: OrderLifecycleStatus }> {
     const snap = await getDoc(doc(this.db, `orders/${orderId}`));
     if (!snap.exists()) {
       throw new Error('Order not found');
     }
-    return normalizeOrderStatus(snap.data()['orderStatus'] as string | undefined);
+    const data = snap.data();
+    return {
+      userId: String(data['userId'] ?? ''),
+      status: normalizeOrderStatus(data['orderStatus'] as string | undefined),
+    };
+  }
+
+  async notifyUser(userId: string, orderId: string, status: OrderStatus): Promise<void> {
+    await this.notifications.notifyUser(userId, orderId, status);
+  }
+
+  myNotifications(userId: string): Observable<import('../notifications/notification.types').AppNotification[]> {
+    return this.notifications.myNotifications(userId);
+  }
+
+  async markNotificationAsRead(id: string): Promise<void> {
+    await this.notifications.markNotificationAsRead(id);
   }
 
   private formatError(error: unknown): string {
@@ -165,34 +193,6 @@ export class OrdersService {
       return error.message;
     }
     return 'Please try again later';
-  }
-
-  async notifyUser(userId: string, orderId: string, status: OrderStatus): Promise<void> {
-    await addDoc(collection(this.db, 'notifications'), {
-      userId,
-      orderId,
-      title: 'Order Update',
-      message: `Your order #${orderId.slice(-8).toUpperCase()} is now ${status}.`,
-      isRead: false,
-      createdAt: serverTimestamp(),
-    });
-  }
-
-  myNotifications(userId: string): Observable<any[]> {
-    return (collectionData(
-      query(collection(this.db, 'notifications'), where('userId', '==', userId)),
-      { idField: 'id' }
-    ) as Observable<any[]>).pipe(
-      map(notifs => notifs.sort((a, b) => {
-        const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
-        const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
-        return tB - tA;
-      }))
-    );
-  }
-
-  async markNotificationAsRead(id: string): Promise<void> {
-    await updateDoc(doc(this.db, `notifications/${id}`), { isRead: true });
   }
 
   // ---- Razorpay (via Cloud Functions) ----

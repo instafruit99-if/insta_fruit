@@ -5,7 +5,7 @@ import { LucideAngularModule, MapPin, Bell, ChevronDown } from 'lucide-angular';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { switchMap, of } from 'rxjs';
 import { ProductsService } from '../../core/services/products.service';
-import { OrdersService } from '../../core/services/orders.service';
+import { NotificationService } from '../../core/services/notification.service';
 import { CategoriesService } from '../../core/services/categories.service';
 import { BannersService } from '../../core/services/banners.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -169,19 +169,19 @@ export class HomeComponent implements OnInit {
   private readonly catsSvc = inject(CategoriesService);
   private readonly bannersSvc = inject(BannersService);
   private readonly auth = inject(AuthService);
-  private readonly ordersSvc = inject(OrdersService);
+  private readonly notificationsSvc = inject(NotificationService);
   readonly location = inject(LocationService);
 
   readonly MapPinIcon = MapPin; readonly BellIcon = Bell; readonly ChevronIcon = ChevronDown;
 
   readonly notifications = toSignal(
     toObservable(this.auth.user).pipe(
-      switchMap((u) => u ? this.ordersSvc.myNotifications(u.uid) : of([]))
+      switchMap((u) => u ? this.notificationsSvc.myNotifications(u.uid) : of([]))
     ),
     { initialValue: [] }
   );
 
-  readonly unreadCount = computed(() => this.notifications().filter(n => !n.isRead).length);
+  readonly unreadCount = computed(() => this.notificationsSvc.unreadCount(this.notifications()));
 
   ngOnInit(): void {
     void this.location.loadSaved();

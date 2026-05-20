@@ -11,6 +11,7 @@ import {
 } from '@angular/fire/firestore';
 import { Functions, httpsCallable } from '@angular/fire/functions';
 import { RazorpayService } from '../services/razorpay.service';
+import { NotificationService } from '../services/notification.service';
 import { PaymentLifecycleStatus } from './payment-state.enum';
 import { CheckoutPaymentInput, CheckoutPaymentResult } from './payment.types';
 import { PaymentError, paymentError, PAYMENT_ERROR_MESSAGES } from './payment-errors';
@@ -41,6 +42,7 @@ export class PaymentEngineService {
   private readonly auth = inject(Auth);
   private readonly fns = inject(Functions);
   private readonly razorpay = inject(RazorpayService);
+  private readonly notifications = inject(NotificationService);
   private readonly lock = inject(PaymentLockService);
   private readonly retry = inject(PaymentRetryService);
 
@@ -103,9 +105,11 @@ export class PaymentEngineService {
       });
 
       this.retry.clear(input.orderId);
+      void this.notifications.notifyPaymentSuccess(input.userId, input.orderId);
       return { orderId: input.orderId, completed: true, paymentId: razorpayOrderId };
     } catch (error) {
       const reason = error instanceof Error ? error.message : PAYMENT_ERROR_MESSAGES.PAYMENT_FAILED;
+      void this.notifications.notifyPaymentFailed(input.userId, input.orderId, reason);
       if (razorpayOrderId) {
         await this.markPaymentFailed(razorpayOrderId, reason);
       }

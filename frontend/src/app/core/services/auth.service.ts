@@ -47,7 +47,7 @@ export class AuthService {
     try {
       const ref = doc(this.db, `users/${uid}`);
       const snapshot = await getDoc(ref);
-  
+
       if (snapshot.exists()) {
         this._profile.set(docToAppUser(snapshot.data() as Record<string, unknown>));
         this.isAdmin.set((this._profile()?.role) === 'admin');
@@ -62,30 +62,30 @@ export class AuthService {
   }
   profile$(): Observable<AppUser | null> {
     return new Observable<AppUser | null>((subscriber) => {
-  
+
       const unsub = onAuthStateChanged(this.auth, async (u) => {
-  
+
         if (!u) {
           subscriber.next(null);
           return;
         }
-  
+
         try {
           const snapshot = await getDoc(doc(this.db, `users/${u.uid}`));
-  
+
           if (snapshot.exists()) {
             subscriber.next(docToAppUser(snapshot.data() as Record<string, unknown>));
           } else {
             subscriber.next(null);
           }
-  
+
         } catch (e) {
           console.log(e);
           subscriber.next(null);
         }
-  
+
       });
-  
+
       return () => unsub();
     });
   }
@@ -148,7 +148,10 @@ export class AuthService {
 
   async updateProfile(uid: string, patch: Partial<AppUser>): Promise<void> {
     const ref = doc(this.db, `users/${uid}`);
-    await updateDoc(ref, { ...patch, updatedAt: serverTimestamp() });
+    const clean = Object.fromEntries(
+      Object.entries(patch).filter(([, value]) => value !== undefined),
+    ) as Partial<AppUser>;
+    await updateDoc(ref, { ...clean, updatedAt: serverTimestamp() });
     const snapshot = await getDoc(ref);
     if (snapshot.exists()) {
       this._profile.set(docToAppUser(snapshot.data() as Record<string, unknown>));
@@ -159,13 +162,13 @@ export class AuthService {
   async signInWithGoogle(): Promise<void> {
 
     const provider = new GoogleAuthProvider();
-  
+
     const cred = await signInWithPopup(this.auth, provider);
-  
+
     const user = cred.user;
-  
+
     const userRef = doc(this.db, `users/${user.uid}`);
-  
+
     await setDoc(userRef, {
       uid: user.uid,
       fullName: user.displayName || '',

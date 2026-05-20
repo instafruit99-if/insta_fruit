@@ -5,7 +5,8 @@ import { Router } from '@angular/router';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { switchMap, of } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
-import { OrdersService } from '../../core/services/orders.service';
+import { NotificationService } from '../../core/services/notification.service';
+import { AppNotification } from '../../core/notifications/notification.types';
 import { BottomNavbarComponent } from '../../shared/bottom-navbar.component';
 
 @Component({
@@ -24,8 +25,8 @@ import { BottomNavbarComponent } from '../../shared/bottom-navbar.component';
 
       <div class="px-5 pt-6 space-y-3">
         @for (n of notifications(); track n.id) {
-          @if (n.orderId) {
-            <button type="button" (click)="trackOrder(n.orderId)" class="w-full text-left bg-white rounded-card p-4 shadow-soft flex gap-3 active:scale-[0.98] transition-transform">
+          @if (n.relatedOrderId || n.orderId) {
+            <button type="button" (click)="openNotification(n)" class="w-full text-left bg-white rounded-card p-4 shadow-soft flex gap-3 active:scale-[0.98] transition-transform">
               <div class="w-10 h-10 rounded-full bg-primary-light flex items-center justify-center shrink-0">
                 <lucide-icon [img]="BellIcon" [size]="18" class="text-primary"></lucide-icon>
               </div>
@@ -67,13 +68,13 @@ import { BottomNavbarComponent } from '../../shared/bottom-navbar.component';
 })
 export class NotificationsComponent {
   private readonly location = inject(Location);
-  private readonly ordersSvc = inject(OrdersService);
+  private readonly notificationsSvc = inject(NotificationService);
   private readonly router = inject(Router);
   readonly auth = inject(AuthService);
   
   readonly notifications = toSignal(
     toObservable(this.auth.user).pipe(
-      switchMap((u) => u ? this.ordersSvc.myNotifications(u.uid) : of([]))
+      switchMap((u) => u ? this.notificationsSvc.myNotifications(u.uid) : of([] as AppNotification[]))
     ),
     { initialValue: [] }
   );
@@ -86,12 +87,15 @@ export class NotificationsComponent {
       const list = this.notifications();
       for (const n of list) {
         if (!n.isRead && n.id) {
-          void this.ordersSvc.markNotificationAsRead(n.id);
+          void this.notificationsSvc.markNotificationAsRead(n.id);
         }
       }
     });
   }
 
   back(): void { this.location.back(); }
-  trackOrder(orderId?: string): void { if (orderId) this.router.navigate(['/track-order', orderId]); }
+  openNotification(n: AppNotification): void {
+    this.notificationsSvc.routing.navigate(this.router, n);
+    void this.notificationsSvc.markNotificationAsRead(n.id);
+  }
 }
