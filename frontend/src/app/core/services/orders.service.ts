@@ -17,6 +17,8 @@ import { AuditLoggerService } from '../security/audit-logger.service';
 import { validateOrderId } from '../security/security-validation';
 import { DeliveryEligibilityService } from '../address/delivery-eligibility.service';
 import { AddressError } from '../address/address-errors';
+import { PaymentError } from '../payment/payment-errors';
+import { PaymentEngineService } from '../payment/payment-engine.service';
 
 interface CreateRazorpayInput { orderId: string; amount: number; currency?: 'INR'; }
 interface CreateRazorpayResult { razorpayOrderId: string; amount: number; currency: 'INR'; }
@@ -144,6 +146,9 @@ export class OrdersService {
   }
 
   private formatError(error: unknown): string {
+    if (error instanceof PaymentError) {
+      return PaymentEngineService.toUserMessage(error);
+    }
     if (error instanceof AddressError) {
       return error.message;
     }

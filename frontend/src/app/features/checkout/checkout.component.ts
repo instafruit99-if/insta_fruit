@@ -5,7 +5,7 @@ import { LucideAngularModule, ChevronLeft, MapPin, Wallet, Banknote, Pencil, Ale
 import { CartService } from '../../core/services/cart.service';
 import { AuthService } from '../../core/services/auth.service';
 import { OrdersService } from '../../core/services/orders.service';
-import { RazorpayService } from '../../core/services/razorpay.service';
+import { PaymentService } from '../../core/services/payment.service';
 import { AnalyticsService } from '../../core/services/analytics.service';
 import { PaymentMethod } from '../../core/models';
 import { AddressEngineService } from '../../core/address/address-engine.service';
@@ -197,7 +197,7 @@ export class CheckoutComponent {
   readonly cart = inject(CartService);
   private readonly auth = inject(AuthService);
   private readonly orders = inject(OrdersService);
-  private readonly razorpay = inject(RazorpayService);
+  private readonly payments = inject(PaymentService);
   private readonly analytics = inject(AnalyticsService);
   private readonly router = inject(Router);
   private readonly location = inject(Location);
@@ -341,7 +341,7 @@ export class CheckoutComponent {
       return;
     }
     if (this.cart.items().length === 0) return;
-    if (this.placingOrder() || this.orders.isCheckoutInProgress()) return;
+    if (this.placingOrder() || this.orders.isCheckoutInProgress() || this.payments.isPaymentInProgress()) return;
     this.placingOrder.set(true);
     this.error.set('');
     if (!this.placeOrderRequestId) {
@@ -357,20 +357,17 @@ export class CheckoutComponent {
         address: this.addressEngine.assertCheckoutReady(),
       });
 
-      if (this.payment() === 'razorpay') {
-        const rzpOrder = await this.orders.createRazorpayOrder({
-          orderId, amount: +this.cart.total().toFixed(2), currency: 'INR',
-        });
-        const success = await this.razorpay.openCheckout({
-          razorpayOrderId: rzpOrder.razorpayOrderId,
-          amountInr: rzpOrder.amount, orderId,
-        });
-        await this.orders.verifyRazorpayPayment({
-          razorpayOrderId: success.razorpay_order_id,
-          razorpayPaymentId: success.razorpay_payment_id,
-          razorpaySignature: success.razorpay_signature,
-          orderId,
-        });
+      const paymentResult = await this.payments.processCheckout({
+        orderId,
+        userId: profile.uid,
+        amount: +this.cart.total().toFixed(2),
+        method: this.payment(),
+        userName: profile.fullName,
+        userPhone: profile.phone,
+      });
+
+      if (!paymentResult.completed) {
+        throw new Error('Payment failed. Please try again.');
       }
 
       this.analytics.track('purchase', { orderId, total: this.cart.total() });
@@ -378,7 +375,7 @@ export class CheckoutComponent {
       this.cart.clear();
       this.router.navigate(['/order-success', orderId]);
     } catch (e) {
-      this.error.set((e as Error)?.message ?? 'Please try again');
+      this.error.set(PaymentService.toUserMessage(e));
     } finally {
       this.placingOrder.set(false);
     }
