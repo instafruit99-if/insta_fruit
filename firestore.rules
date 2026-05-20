@@ -17,6 +17,21 @@ service cloud.firestore {
             && request.resource.data.addresses.size() <= 10);
     }
 
+    function unchangedUserStatus() {
+      return request.resource.data.get('role', 'customer') == resource.data.get('role', 'customer')
+        && request.resource.data.get('isBlocked', false) == resource.data.get('isBlocked', false);
+    }
+
+    function ownerProfilePatchOnly() {
+      let keys = request.resource.data.diff(resource.data).affectedKeys();
+      return keys.hasOnly(['addresses', 'defaultAddress', 'updatedAt'])
+        || keys.hasOnly(['lastLocation', 'defaultAddress', 'updatedAt'])
+        || keys.hasOnly(['lastLocation', 'updatedAt'])
+        || keys.hasOnly(['profileImage', 'updatedAt'])
+        || keys.hasOnly(['fullName', 'phone', 'updatedAt'])
+        || keys.hasOnly(['favoriteProductIds', 'updatedAt']);
+    }
+
     // Users: each user reads/writes own doc; admin reads all; admin can update role/block.
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
@@ -24,11 +39,10 @@ service cloud.firestore {
         && request.resource.data.role == 'customer'
         && request.resource.data.uid == userId
         && validUserAddresses();
-      allow update: if ((isOwner(userId)
-                        && request.resource.data.role == resource.data.role
-                        && request.resource.data.isBlocked == resource.data.isBlocked
-                        && validUserAddresses())
-                    || isAdmin());
+      allow update: if isAdmin()
+        || (isOwner(userId)
+            && validUserAddresses()
+            && (ownerProfilePatchOnly() || unchangedUserStatus()));
       allow delete: if isAdmin();
     }
 

@@ -11,6 +11,21 @@ function newAddressId(): string {
   return crypto.randomUUID();
 }
 
+function validCoordinates(
+  coords: SavedAddress['coordinates'],
+): { lat: number; lng: number } | undefined {
+  if (
+    coords &&
+    typeof coords.lat === 'number' &&
+    typeof coords.lng === 'number' &&
+    Number.isFinite(coords.lat) &&
+    Number.isFinite(coords.lng)
+  ) {
+    return { lat: coords.lat, lng: coords.lng };
+  }
+  return undefined;
+}
+
 function ensureSingleDefault(list: SavedAddress[]): SavedAddress[] {
   if (list.length === 0) return list;
   const defaultIdx = list.findIndex((a) => a.isDefault);
@@ -36,7 +51,8 @@ function savedAddressToFirestore(saved: SavedAddress): Record<string, unknown> {
   };
   if (saved.addressLine2) row['addressLine2'] = saved.addressLine2;
   if (saved.landmark) row['landmark'] = saved.landmark;
-  if (saved.coordinates) row['coordinates'] = saved.coordinates;
+  const coordinates = validCoordinates(saved.coordinates);
+  if (coordinates) row['coordinates'] = coordinates;
   return row;
 }
 
@@ -53,7 +69,8 @@ function defaultAddressToFirestore(saved: SavedAddress): Record<string, unknown>
   if (a.line2) row['line2'] = a.line2;
   if (a.locality) row['locality'] = a.locality;
   if (a.phone) row['phone'] = a.phone;
-  if (a.coordinates) row['coordinates'] = a.coordinates;
+  const coordinates = validCoordinates(a.coordinates);
+  if (coordinates) row['coordinates'] = coordinates;
   return row;
 }
 
@@ -167,7 +184,7 @@ export class AddressEngineService {
         pincode: String(item['pincode'] ?? item['postalCode'] ?? ''),
         country: String(item['country'] ?? 'India'),
         isDefault: item['isDefault'] === true,
-        coordinates: item['coordinates'] as SavedAddress['coordinates'],
+        coordinates: validCoordinates(item['coordinates'] as SavedAddress['coordinates']),
       }))
       .filter((a) => a.addressLine1 && a.city && a.pincode);
   }
@@ -278,11 +295,14 @@ export class AddressEngineService {
     this._selectedId.set(id);
   }
 
-  private async persist(uid: string, addresses: SavedAddress[]): Promise<void> {
+  private async persist(_uid: string, addresses: SavedAddress[]): Promise<void> {
+    const authUid = this.auth.user()?.uid;
+    if (!authUid) throw addressError('ADDRESS_REQUIRED');
+
     const normalized = ensureSingleDefault(addresses);
     const defaultOne = normalized.find((a) => a.isDefault);
     try {
-      await this.auth.updateProfile(uid, {
+      await this.auth.updateProfile(authUid, {
         addresses: normalized.map((a) => savedAddressToFirestore(a) as unknown as SavedAddress),
         ...(defaultOne
           ? { defaultAddress: defaultAddressToFirestore(defaultOne) as unknown as Address }

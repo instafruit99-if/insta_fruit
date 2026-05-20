@@ -7,12 +7,27 @@ import { Router } from '@angular/router';
 import { Observable, of, switchMap } from 'rxjs';
 import { AppUser } from '../models';
 
+/** Firestore rejects `undefined` anywhere in nested maps — strip before writes. */
+function stripUndefinedDeep(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== 'object') return value;
+  if (value instanceof Date) return value;
+  if (typeof (value as { _methodName?: unknown })._methodName === 'string') return value;
+  if (Array.isArray(value)) return value.map(stripUndefinedDeep);
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]) => [k, stripUndefinedDeep(v)]),
+  );
+}
+
 /** Normalize legacy Firestore field `profileImageUrl` (Google sign-in) into `profileImage`. */
-function docToAppUser(raw: Record<string, unknown>): AppUser {
+function docToAppUser(raw: Record<string, unknown>, uid?: string): AppUser {
   const d = raw as unknown as AppUser & { profileImageUrl?: string };
   const profileImage = d.profileImage ?? d.profileImageUrl;
   return {
     ...d,
+    uid: d.uid ?? uid ?? '',
     profileImage: profileImage || undefined,
   };
 }
@@ -49,7 +64,7 @@ export class AuthService {
       const snapshot = await getDoc(ref);
 
       if (snapshot.exists()) {
-        this._profile.set(docToAppUser(snapshot.data() as Record<string, unknown>));
+        this._profile.set(docToAppUser(snapshot.data() as Record<string, unknown>, uid));
         this.isAdmin.set((this._profile()?.role) === 'admin');
       } else {
         this._profile.set(null);
@@ -74,7 +89,7 @@ export class AuthService {
           const snapshot = await getDoc(doc(this.db, `users/${u.uid}`));
 
           if (snapshot.exists()) {
-            subscriber.next(docToAppUser(snapshot.data() as Record<string, unknown>));
+            subscriber.next(docToAppUser(snapshot.data() as Record<string, unknown>, u.uid));
           } else {
             subscriber.next(null);
           }
@@ -147,14 +162,38 @@ export class AuthService {
   }
 
   async updateProfile(uid: string, patch: Partial<AppUser>): Promise<void> {
-    const ref = doc(this.db, `users/${uid}`);
-    const clean = Object.fromEntries(
-      Object.entries(patch).filter(([, value]) => value !== undefined),
+    const authUid = this.auth.currentUser?.uid;
+    if (!authUid || authUid !== uid) {
+      throw new Error('Unauthorized profile update');
+    }
+
+    const ref = doc(this.db, `users/${authUid}`);
+    const clean = stripUndefinedDeep(
+      Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)),
     ) as Partial<AppUser>;
-    await updateDoc(ref, { ...clean, updatedAt: serverTimestamp() });
+
+    const existing = await getDoc(ref);
+    if (existing.exists()) {
+      await updateDoc(ref, { ...clean, updatedAt: serverTimestamp() });
+    } else {
+      const user = this.auth.currentUser!;
+      await setDoc(ref, stripUndefinedDeep({
+        uid: authUid,
+        fullName: user.displayName ?? '',
+        email: user.email ?? '',
+        phone: user.phoneNumber ?? '',
+        role: 'customer',
+        isPhoneVerified: false,
+        favoriteProductIds: [],
+        ...clean,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }) as Record<string, unknown>);
+    }
+
     const snapshot = await getDoc(ref);
     if (snapshot.exists()) {
-      this._profile.set(docToAppUser(snapshot.data() as Record<string, unknown>));
+      this._profile.set(docToAppUser(snapshot.data() as Record<string, unknown>, authUid));
       this.isAdmin.set(this._profile()?.role === 'admin');
     }
   }
