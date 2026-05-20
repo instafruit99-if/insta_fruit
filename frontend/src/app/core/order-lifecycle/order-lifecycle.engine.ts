@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Auth } from '@angular/fire/auth';
 import {
   Firestore,
+  Timestamp,
   arrayUnion,
   doc,
   getDoc,
@@ -44,9 +45,10 @@ export class OrderLifecycleEngine {
 
     if (from === to) return;
 
+    // serverTimestamp() cannot be used inside arrayUnion — use client Timestamp.
     const timelineEntry = {
       ...buildTimelineEntry(from, to, actorUid),
-      at: serverTimestamp(),
+      at: Timestamp.now(),
     };
 
     const patch: Record<string, unknown> = {
@@ -63,7 +65,15 @@ export class OrderLifecycleEngine {
 
     try {
       await updateDoc(orderRef, patch);
-    } catch {
+    } catch (error) {
+      console.error('[OrderLifecycle] update failed', error);
+      const code = (error as { code?: string })?.code;
+      if (code === 'permission-denied') {
+        throw new OrderLifecycleError(
+          'UPDATE_FAILED',
+          'Permission denied. Ensure your user has admin role in Firestore.',
+        );
+      }
       throw new OrderLifecycleError('UPDATE_FAILED');
     }
   }
