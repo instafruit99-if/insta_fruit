@@ -2,4 +2,6 @@ node_modules/
 .env
 *.log
 npm-debug.log*
-service-account.json //instafruit99-13755-firebase-adminsdk-fbsvc-1989c0a2fd.json
+service-account.json
+*-firebase-adminsdk-*.json
+src/config/service-account.json
