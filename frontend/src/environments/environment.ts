@@ -1,5 +1,6 @@
 export const environment = {
   production: false,
+  apiUrl: 'http://localhost:5000',
   // TODO: Replace these placeholders with your Firebase web config (Firebase Console → Project settings → Your apps → SDK setup)
   firebase: {
     apiKey: "AIzaSyDziBrk5HCpi4CarfqshoOJ8ZmpTBPuTr8",
@@ -11,7 +12,7 @@ export const environment = {
     measurementId: "G-PY5G388NYE"
   },
   // Razorpay public Key ID (frontend). Secret stays in Cloud Functions config.
-  razorpayKeyId: 'rzp_test_REPLACE_KEY_ID',
+  razorpayKeyId: 'rzp_live_Ss9ttn45XVGU1N',
   region: 'asia-south1',
   useEmulators: false,
   /** Unsigned upload preset must allow folders: products, categories, banners, users (Cloudinary dashboard). */

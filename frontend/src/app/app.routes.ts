@@ -81,6 +81,11 @@ export const routes: Routes = [
     loadComponent: () => import('./features/profile/payment-methods.component').then((m) => m.PaymentMethodsComponent),
   },
   {
+    path: 'payment-demo',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/payment/payment-demo.component').then((m) => m.PaymentDemoComponent),
+  },
+  {
     path: 'notifications',
     canActivate: [authGuard],
     loadComponent: () => import('./features/profile/notifications.component').then((m) => m.NotificationsComponent),

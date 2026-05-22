@@ -1,5 +1,6 @@
 export const environment = {
   production: true,
+  apiUrl: 'https://YOUR_BACKEND_HOST',
   firebase: {
     apiKey: "AIzaSyDziBrk5HCpi4CarfqshoOJ8ZmpTBPuTr8",
     authDomain: "instafruit99-13755.firebaseapp.com",

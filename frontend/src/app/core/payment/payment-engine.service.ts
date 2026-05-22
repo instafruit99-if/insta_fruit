@@ -1,4 +1,6 @@
 import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
 import { Auth } from '@angular/fire/auth';
 import {
   Firestore,
@@ -10,7 +12,9 @@ import {
   updateDoc,
 } from '@angular/fire/firestore';
 import { Functions, httpsCallable } from '@angular/fire/functions';
+import { environment } from '../../../environments/environment';
 import { RazorpayService } from '../services/razorpay.service';
+import { CreateOrderResponse } from './payment-api.types';
 import { NotificationService } from '../services/notification.service';
 import { PaymentLifecycleStatus } from './payment-state.enum';
 import { CheckoutPaymentInput, CheckoutPaymentResult } from './payment.types';
@@ -40,6 +44,7 @@ interface VerifyRazorpayInput {
 export class PaymentEngineService {
   private readonly db = inject(Firestore);
   private readonly auth = inject(Auth);
+  private readonly http = inject(HttpClient);
   private readonly fns = inject(Functions);
   private readonly razorpay = inject(RazorpayService);
   private readonly notifications = inject(NotificationService);
@@ -82,12 +87,19 @@ export class PaymentEngineService {
 
     let razorpayOrderId: string | undefined;
     try {
-      const rzpOrder = await this.createRazorpayOrderCallable({
+      const rzpOrder = await this.createRazorpayOrderViaBackend({
         orderId: input.orderId,
         amount: input.amount,
         currency: 'INR',
       });
       razorpayOrderId = rzpOrder.razorpayOrderId;
+
+      await this.createRazorpayPaymentDoc({
+        razorpayOrderId: rzpOrder.razorpayOrderId,
+        orderId: input.orderId,
+        userId: input.userId,
+        amount: input.amount,
+      });
 
       await this.updatePaymentStatus(razorpayOrderId, 'processing');
 
@@ -200,9 +212,46 @@ export class PaymentEngineService {
     }
   }
 
-  private createRazorpayOrderCallable(input: CreateRazorpayInput): Promise<CreateRazorpayResult> {
-    const fn = httpsCallable<CreateRazorpayInput, CreateRazorpayResult>(this.fns, 'createRazorpayOrder');
-    return fn(input).then((r) => r.data);
+  private async createRazorpayOrderViaBackend(
+    input: CreateRazorpayInput,
+  ): Promise<CreateRazorpayResult> {
+    const created = await firstValueFrom(
+      this.http.post<CreateOrderResponse>(
+        `${environment.apiUrl}/api/payment/create-order`,
+        {
+          amount: input.amount,
+          currency: input.currency ?? 'INR',
+          receipt: input.orderId,
+        },
+      ),
+    );
+
+    return {
+      razorpayOrderId: created.id,
+      amount: input.amount,
+      currency: 'INR',
+    };
+  }
+
+  private async createRazorpayPaymentDoc(params: {
+    razorpayOrderId: string;
+    orderId: string;
+    userId: string;
+    amount: number;
+  }): Promise<void> {
+    await setDoc(doc(this.db, `payments/${params.razorpayOrderId}`), {
+      paymentId: params.razorpayOrderId,
+      orderId: params.orderId,
+      userId: params.userId,
+      razorpayOrderId: params.razorpayOrderId,
+      amount: params.amount,
+      currency: 'INR',
+      method: 'razorpay',
+      status: 'pending',
+      failureReason: null,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
   }
 
   private verifyRazorpayPaymentCallable(
@@ -219,8 +268,19 @@ export class PaymentEngineService {
     if (error instanceof PaymentError) {
       return error.message;
     }
+    const code =
+      typeof error === 'object' && error !== null && 'code' in error
+        ? String((error as { code: string }).code)
+        : '';
+    if (code === 'functions/internal' || code === 'internal') {
+      return 'Payment service is unavailable. Check that the backend is running.';
+    }
     if (error instanceof Error && error.message.trim()) {
-      return error.message;
+      const msg = error.message.trim();
+      if (msg === 'internal') {
+        return 'Payment service is unavailable. Check that the backend is running.';
+      }
+      return msg;
     }
     return PAYMENT_ERROR_MESSAGES.PAYMENT_FAILED;
   }
