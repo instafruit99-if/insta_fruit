@@ -2,7 +2,6 @@ import { Injectable, inject } from '@angular/core';
 import { Auth } from '@angular/fire/auth';
 import { Firestore, collection, collectionData, doc, docData, getDoc,
   query, where, orderBy } from '@angular/fire/firestore';
-import { Functions, httpsCallable } from '@angular/fire/functions';
 import { Observable } from 'rxjs';
 import { Order, OrderStatus } from '../models';
 import { OrderTransactionEngine } from '../orders-engine/order-transaction.engine';
@@ -22,16 +21,9 @@ import { PaymentEngineService } from '../payment/payment-engine.service';
 import { PaymentError } from '../payment/payment-errors';
 import { NotificationService } from './notification.service';
 
-interface CreateRazorpayInput { orderId: string; amount: number; currency?: 'INR'; }
-interface CreateRazorpayResult { razorpayOrderId: string; amount: number; currency: 'INR'; }
-interface VerifyRazorpayInput {
-  razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string; orderId: string;
-}
-
 @Injectable({ providedIn: 'root' })
 export class OrdersService {
   private readonly db = inject(Firestore);
-  private readonly fns = inject(Functions);
   private readonly orderEngine = inject(OrderTransactionEngine);
   private readonly lifecycle = inject(OrderLifecycleEngine);
   private readonly security = inject(SecurityEngineService);
@@ -200,16 +192,5 @@ export class OrdersService {
       return error.message;
     }
     return 'Please try again later';
-  }
-
-  // ---- Razorpay (via Cloud Functions) ----
-  createRazorpayOrder(input: CreateRazorpayInput): Promise<CreateRazorpayResult> {
-    const fn = httpsCallable<CreateRazorpayInput, CreateRazorpayResult>(this.fns, 'createRazorpayOrder');
-    return fn(input).then((r) => r.data);
-  }
-
-  verifyRazorpayPayment(input: VerifyRazorpayInput): Promise<{ success: boolean }> {
-    const fn = httpsCallable<VerifyRazorpayInput, { success: boolean }>(this.fns, 'verifyRazorpayPayment');
-    return fn(input).then((r) => r.data);
   }
 }

@@ -195,7 +195,7 @@ service cloud.firestore {
         && allowedPaymentTransition(from, to);
     }
 
-    // Payments: owner read; COD create pending; client may set processing/failed/cancelled; success via CF only.
+    // Payments: owner read; COD create pending; client may set processing/failed/cancelled; success via Node backend (Admin SDK).
     match /payments/{paymentId} {
       allow read: if isSignedIn()
         && (resource.data.userId == request.auth.uid || isAdmin());

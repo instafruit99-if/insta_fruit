@@ -2,7 +2,7 @@
 export const DELIVERY_CONFIG = {
   defaultDeliveryFeeInr: 25,
   freeDeliveryThresholdInr: 499,
-  minimumOrderAmountInr: 99,
+  minimumOrderAmountInr: 0,
   estimatedPreparationTimeMinutes: 20,
   /** Average last-mile delivery time after preparation. */
   estimatedDeliveryWindowMinutes: 30,

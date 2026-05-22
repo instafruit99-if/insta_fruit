@@ -18,6 +18,13 @@ function formatSlotLabel(id: DeliverySlotId): string {
   return `${id.slice(0, idx)} – ${id.slice(idx + 1)}`;
 }
 
+function startOfTomorrow(now: Date): Date {
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0);
+  return tomorrow;
+}
+
 /** Normalize user/display slot values to canonical ids (e.g. "7AM - 9AM" → "7AM-9AM"). */
 export function normalizeDeliverySlotId(raw: string): DeliverySlotId | null {
   const compact = raw.trim().replace(/\s+/g, '').replace('–', '-').toUpperCase();
@@ -44,35 +51,38 @@ export class DeliverySlotService {
     return now >= end;
   }
 
+  private allTodaySlotsExpired(now: Date): boolean {
+    return DELIVERY_CONFIG.supportedDeliverySlots.every((id) => this.isExpired(id, now));
+  }
+
   getAvailableSlots(now = new Date()): DeliverySlotOption[] {
-    const available = DELIVERY_CONFIG.supportedDeliverySlots
+    const todayAvailable = DELIVERY_CONFIG.supportedDeliverySlots
       .filter((id) => !this.isExpired(id, now))
-      .map((id) => ({
+      .map((id, index) => ({
         id,
         label: formatSlotLabel(id),
         available: true,
+        isNextAvailable: index === 0,
       }));
 
-    if (available.length === 0) {
-      return DELIVERY_CONFIG.supportedDeliverySlots.map((id) => ({
-        id,
-        label: formatSlotLabel(id),
-        available: false,
-      }));
+    if (todayAvailable.length > 0) {
+      return todayAvailable;
     }
 
-    return available.map((slot, index) => ({
-      ...slot,
-      isNextAvailable: index === 0,
-    }));
+    const tomorrow = startOfTomorrow(now);
+    return DELIVERY_CONFIG.supportedDeliverySlots
+      .filter((id) => !this.isExpired(id, tomorrow))
+      .map((id, index) => ({
+        id,
+        label: `${formatSlotLabel(id)} (tomorrow)`,
+        available: true,
+        isNextAvailable: index === 0,
+      }));
   }
 
   defaultSlot(now = new Date()): DeliverySlotId {
     const next = this.getAvailableSlots(now).find((s) => s.available);
-    if (!next) {
-      throw deliveryError('SLOT_UNAVAILABLE');
-    }
-    return next.id;
+    return next?.id ?? DELIVERY_CONFIG.supportedDeliverySlots[0];
   }
 
   validateSelection(rawSlot: string, now = new Date()): DeliverySlotId {
@@ -80,15 +90,22 @@ export class DeliverySlotService {
     if (!slotId) {
       throw deliveryError('INVALID_SLOT');
     }
-    if (this.isExpired(slotId, now)) {
-      throw deliveryError('SLOT_UNAVAILABLE');
+    if (!this.isExpired(slotId, now)) {
+      return slotId;
     }
-    return slotId;
+    if (this.allTodaySlotsExpired(now) && !this.isExpired(slotId, startOfTomorrow(now))) {
+      return slotId;
+    }
+    throw deliveryError('SLOT_UNAVAILABLE');
   }
 
   slotStartDate(slotId: DeliverySlotId, now = new Date()): Date {
     const window = SLOT_WINDOWS[slotId];
-    const start = new Date(now);
+    const day =
+      !this.isExpired(slotId, now) || !this.allTodaySlotsExpired(now)
+        ? now
+        : startOfTomorrow(now);
+    const start = new Date(day);
     start.setHours(window.startHour, 0, 0, 0);
     return start;
   }

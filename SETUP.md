@@ -24,8 +24,6 @@ In Firebase Console, enable:
 - **Authentication** → Email/Password ✓ and Phone ✓ (add your preview URL + production URL to authorized domains)
 - **Cloud Firestore** → create database in `asia-south1`
 - **Storage** → create default bucket
-- **Functions** → upgrade to Blaze (pay-as-you-go) plan — required to deploy Cloud Functions
-
 ## 3. Deploy Security Rules + Indexes
 
 From `/app/`:
@@ -43,23 +41,27 @@ firebase deploy --only firestore:indexes
 
 New composite indexes can take a few minutes to build in Firebase Console → Firestore → Indexes.
 
-## 4. Deploy Cloud Functions (Razorpay)
+## 4. Run Node.js Backend (Razorpay, geocode, refunds)
 
 ```bash
-cd /app/functions
+cd backend
 npm install
-cd /app/
-
-# Set Razorpay secrets (test or live keys)
-firebase functions:secrets:set RAZORPAY_KEY_ID       # paste rzp_test_xxxx
-firebase functions:secrets:set RAZORPAY_KEY_SECRET   # paste secret
-
-firebase deploy --only functions
+cp .env.example .env   # if present; otherwise create .env locally
+npm run dev
 ```
 
-Also set the public Razorpay Key ID in `/app/frontend/src/environments/environment.ts`:
+Set in `backend/.env` (never commit this file):
+
+- `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET`
+- `FIREBASE_SERVICE_ACCOUNT_PATH=src/config/service-account.json`
+- `GOOGLE_MAPS_API_KEY` (optional, for GPS reverse geocode)
+- `PORT=5000`
+
+Set the **public** Razorpay Key ID in `frontend/src/environments/environment.ts`:
+
 ```ts
-razorpayKeyId: 'rzp_test_XXXXXXXXXXXX'
+apiUrl: 'http://localhost:5000',
+razorpayKeyId: 'rzp_test_XXXXXXXXXXXX',
 ```
 
 ## 5. Create the Admin Account

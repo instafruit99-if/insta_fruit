@@ -7,8 +7,8 @@ Pixel-perfect Angular + Firebase enterprise SaaS for premium fruit delivery. Cus
 - **Angular 21** standalone components, lazy routes, Signals + RxJS
 - **TailwindCSS 3** + Poppins
 - **@angular/fire** + Firebase 11 (Auth, Firestore, Storage, Functions, Analytics)
-- **Cloud Functions** (Node 20, TypeScript) for Razorpay verify/refund, order notifications, daily analytics aggregation
-- **Razorpay** payment gateway (Cloud Functions verify HMAC signature)
+- **Node.js Express backend** for Razorpay create/verify/refund, reverse geocode
+- **Razorpay** payment gateway (HMAC verification on Node backend)
 - **@angular/service-worker** for PWA
 - **Firebase Hosting** target
 
@@ -40,14 +40,13 @@ src/app/
       users-admin    — list + block + role
       refunds-admin  — list + approve (calls processRefund function) + reject
 
-functions/
-  src/index.ts       — createRazorpayOrder, verifyRazorpayPayment, processRefund,
-                       onOrderStatusChange, onImageUpload, aggregateAnalytics (scheduled)
+backend/
+  src/               — Express API: payment, location, refunds, health
 
 firestore.rules      — strict role-based (customer/admin)
 firestore.indexes.json — products/orders/refunds query indexes
 storage.rules        — admin-only writes for catalog, owner-only for avatars
-firebase.json        — hosting + functions + emulators
+firebase.json        — hosting + firestore + storage emulators
 ngsw-config.json     — PWA caching strategy
 manifest.webmanifest — PWA install manifest
 ```
@@ -60,9 +59,9 @@ manifest.webmanifest — PWA install manifest
 - ✅ Firestore CRUD services for users, products, categories, banners, cart, orders, payments, refunds
 - ✅ Firestore-persisted cart with Signals + reactive sync via effect()
 - ✅ Realtime order tracking (Firestore listener → stepper progresses with `orderStatus` field)
-- ✅ Razorpay flow: createOrder (CF) → checkout.js → verify (CF HMAC) → orders/payments updated
+- ✅ Razorpay flow: createOrder (Node API) → checkout.js → verify (Node API) → orders/payments updated
 - ✅ Admin Panel — 7 modules, all wired to Firestore CRUD + Storage image upload
-- ✅ Cloud Functions code complete (Razorpay order/verify/refund, order trigger, storage trigger, daily analytics)
+- ✅ Node backend (Razorpay create/verify/refund, reverse geocode)
 - ✅ Strict Firestore + Storage security rules (role-based)
 - ✅ Composite indexes for product/order/refund queries
 - ✅ PWA: `manifest.webmanifest` + `ngsw-config.json` + service worker registered in prod
@@ -77,14 +76,14 @@ manifest.webmanifest — PWA install manifest
 - Auth (signup/login/OTP) — needs Firebase Auth enabled + real Firebase config
 - Catalog/cart/orders persistence — needs Firestore enabled
 - Image uploads from admin — needs Storage enabled
-- Razorpay checkout — needs Razorpay keys + Cloud Functions deployed (`firebase deploy --only functions`)
+- Razorpay checkout — needs Razorpay keys + Node backend running (`backend/npm run dev`)
 - Real refunds — needs same as above
 
 ## P1/P2 Backlog
 - P1: Search bar on /products wired to `ProductsService.search()` (UI exists, query exists)
 - P1: Address book CRUD (UI shows single default address)
 - P1: Cancel order from `/profile` order history
-- P2: Push notifications (FCM) via `onOrderStatusChange` trigger
+- P2: Push notifications (FCM) via backend webhook or scheduled job
 - P2: Admin sales charts (analytics aggregate already running)
 - P2: SSR (Angular Universal) — recommended deferred until Firebase Hosting deploy
 - P2: i18n + multi-currency

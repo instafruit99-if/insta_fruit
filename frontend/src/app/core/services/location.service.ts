@@ -1,5 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { Functions, httpsCallable } from '@angular/fire/functions';
+import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
+import { environment } from '../../../environments/environment';
 import { Address, AppUser } from '../models';
 import { savedAddressToOrderAddress } from '../address/address-engine.service';
 import { AuthService } from './auth.service';
@@ -23,7 +25,7 @@ interface SessionLocation {
 
 @Injectable({ providedIn: 'root' })
 export class LocationService {
-  private readonly fns = inject(Functions);
+  private readonly http = inject(HttpClient);
   private readonly auth = inject(AuthService);
 
   readonly area = signal('Add address');
@@ -40,7 +42,7 @@ export class LocationService {
   }
 
   /**
-   * GPS + reverse geocode — not used on home yet.
+   * GPS + reverse geocode via Node.js backend.
    * Call from UI when enabling auto-location later.
    */
   async fetchFromGps(): Promise<void> {
@@ -52,8 +54,12 @@ export class LocationService {
     this.loading.set(true);
     try {
       const coords = await getPosition();
-      const fn = httpsCallable<{ lat: number; lng: number }, GeocodeResult>(this.fns, 'reverseGeocode');
-      const { data } = await fn({ lat: coords.lat, lng: coords.lng });
+      const data = await firstValueFrom(
+        this.http.post<GeocodeResult>(
+          `${environment.apiUrl}/api/location/reverse-geocode`,
+          { lat: coords.lat, lng: coords.lng },
+        ),
+      );
       const label = data.locality || data.city || 'Your area';
       this.area.set(label);
       writeSession({ locality: label, city: data.city });

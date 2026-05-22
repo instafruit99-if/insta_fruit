@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { Auth } from '@angular/fire/auth';
 import {
@@ -11,10 +11,13 @@ import {
   setDoc,
   updateDoc,
 } from '@angular/fire/firestore';
-import { Functions, httpsCallable } from '@angular/fire/functions';
 import { environment } from '../../../environments/environment';
 import { RazorpayService } from '../services/razorpay.service';
-import { CreateOrderResponse } from './payment-api.types';
+import {
+  CreateOrderResponse,
+  VerifyPaymentRequest,
+  VerifyPaymentResponse,
+} from './payment-api.types';
 import { NotificationService } from '../services/notification.service';
 import { PaymentLifecycleStatus } from './payment-state.enum';
 import { CheckoutPaymentInput, CheckoutPaymentResult } from './payment.types';
@@ -38,14 +41,13 @@ interface VerifyRazorpayInput {
 
 /**
  * Centralized payment lifecycle engine.
- * Isolated for future webhook / Cloud Function migration.
+ * Razorpay checkout lifecycle via Node.js backend APIs.
  */
 @Injectable({ providedIn: 'root' })
 export class PaymentEngineService {
   private readonly db = inject(Firestore);
   private readonly auth = inject(Auth);
   private readonly http = inject(HttpClient);
-  private readonly fns = inject(Functions);
   private readonly razorpay = inject(RazorpayService);
   private readonly notifications = inject(NotificationService);
   private readonly lock = inject(PaymentLockService);
@@ -82,14 +84,20 @@ export class PaymentEngineService {
     });
   }
 
+  private razorpayChargeAmount(cartAmountInr: number): number {
+    const testAmount = environment.razorpayTestAmountInr;
+    return testAmount != null ? testAmount : cartAmountInr;
+  }
+
   private async processRazorpay(input: CheckoutPaymentInput): Promise<CheckoutPaymentResult> {
     this.retry.assertCanRetry(input.orderId);
+    const chargeAmount = this.razorpayChargeAmount(input.amount);
 
     let razorpayOrderId: string | undefined;
     try {
       const rzpOrder = await this.createRazorpayOrderViaBackend({
         orderId: input.orderId,
-        amount: input.amount,
+        amount: chargeAmount,
         currency: 'INR',
       });
       razorpayOrderId = rzpOrder.razorpayOrderId;
@@ -98,18 +106,18 @@ export class PaymentEngineService {
         razorpayOrderId: rzpOrder.razorpayOrderId,
         orderId: input.orderId,
         userId: input.userId,
-        amount: input.amount,
+        amount: chargeAmount,
       });
 
       await this.updatePaymentStatus(razorpayOrderId, 'processing');
 
       const success = await this.razorpay.openCheckout({
         razorpayOrderId: rzpOrder.razorpayOrderId,
-        amountInr: rzpOrder.amount,
+        amountInr: chargeAmount,
         orderId: input.orderId,
       });
 
-      await this.verifyRazorpayPaymentCallable({
+      await this.verifyRazorpayPaymentViaBackend({
         razorpayOrderId: success.razorpay_order_id,
         razorpayPaymentId: success.razorpay_payment_id,
         razorpaySignature: success.razorpay_signature,
@@ -254,31 +262,44 @@ export class PaymentEngineService {
     });
   }
 
-  private verifyRazorpayPaymentCallable(
+  private verifyRazorpayPaymentViaBackend(
     input: VerifyRazorpayInput,
-  ): Promise<{ success: boolean }> {
-    const fn = httpsCallable<VerifyRazorpayInput, { success: boolean }>(
-      this.fns,
-      'verifyRazorpayPayment',
+  ): Promise<VerifyPaymentResponse> {
+    const body: VerifyPaymentRequest = {
+      razorpayOrderId: input.razorpayOrderId,
+      razorpayPaymentId: input.razorpayPaymentId,
+      razorpaySignature: input.razorpaySignature,
+      orderId: input.orderId,
+    };
+    return firstValueFrom(
+      this.http.post<VerifyPaymentResponse>(
+        `${environment.apiUrl}/api/payment/verify`,
+        body,
+      ),
     );
-    return fn(input).then((r) => r.data);
   }
 
   static toUserMessage(error: unknown): string {
     if (error instanceof PaymentError) {
       return error.message;
     }
+    if (error instanceof HttpErrorResponse) {
+      const body = error.error as { message?: string } | null;
+      if (body?.message?.trim()) {
+        return body.message.trim();
+      }
+    }
     const code =
       typeof error === 'object' && error !== null && 'code' in error
         ? String((error as { code: string }).code)
         : '';
-    if (code === 'functions/internal' || code === 'internal') {
+    if (code === 'internal') {
       return 'Payment service is unavailable. Check that the backend is running.';
     }
     if (error instanceof Error && error.message.trim()) {
       const msg = error.message.trim();
-      if (msg === 'internal') {
-        return 'Payment service is unavailable. Check that the backend is running.';
+      if (msg === 'internal' || msg === 'Http failure response') {
+        return 'Payment verification failed. Ensure the backend is running on port 5000.';
       }
       return msg;
     }

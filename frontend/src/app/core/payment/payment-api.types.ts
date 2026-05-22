@@ -11,6 +11,17 @@ export interface CreateOrderResponse {
   receipt: string;
 }
 
+export interface VerifyPaymentRequest {
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+  razorpaySignature: string;
+  orderId: string;
+}
+
+export interface VerifyPaymentResponse {
+  success: boolean;
+}
+
 import { RazorpaySuccess } from '../services/razorpay.service';
 
 export interface OpenRazorpayCheckoutInput {

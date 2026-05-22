@@ -11,10 +11,13 @@ export const environment = {
     appId: "1:706736900017:web:a3d09d102d650a922a5f90",
     measurementId: "G-PY5G388NYE"
   },
-  // Razorpay public Key ID (frontend). Secret stays in Cloud Functions config.
+  // Razorpay public Key ID (frontend). Secret stays in backend .env only.
   razorpayKeyId: 'rzp_live_Ss9ttn45XVGU1N',
-  region: 'asia-south1',
-  useEmulators: false,
+  /**
+   * TEST ONLY — Razorpay charge amount in INR (not cart total).
+   * Revert: set to `null` to use real cart total again.
+   */
+  razorpayTestAmountInr: 1 as number | null,
   /** Unsigned upload preset must allow folders: products, categories, banners, users (Cloudinary dashboard). */
   cloudinary: {
     cloudName: 'dnmuwin6h',

@@ -11,8 +11,7 @@ export const environment = {
     measurementId: "G-PY5G388NYE"
   },
   razorpayKeyId: 'rzp_live_REPLACE_KEY_ID',
-  region: 'asia-south1',
-  useEmulators: false,
+  razorpayTestAmountInr: null as number | null,
   cloudinary: {
     cloudName: 'dnmuwin6h',
     uploadPreset: 'instafruit_products',

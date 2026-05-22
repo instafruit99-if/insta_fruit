@@ -10,4 +10,5 @@ module.exports = {
     'src/config/service-account.json',
   razorpayKeyId: process.env.RAZORPAY_KEY_ID,
   razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET,
+  googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
 };

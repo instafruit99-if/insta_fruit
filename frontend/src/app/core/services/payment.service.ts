@@ -47,10 +47,11 @@ export class PaymentService {
     instance.open();
   }
 
-  /** Demo flow: backend order → Razorpay popup (₹500). */
+  /** Demo flow: backend order → Razorpay popup (uses razorpayTestAmountInr when set). */
   async runDemoPayment(): Promise<void> {
+    const amount = environment.razorpayTestAmountInr ?? 500;
     const order = await firstValueFrom(
-      this.createOrder({ amount: 500, currency: 'INR', receipt: `demo_${Date.now()}` }),
+      this.createOrder({ amount, currency: 'INR', receipt: `demo_${Date.now()}` }),
     );
 
     this.openRazorpayCheckout({
@@ -58,7 +59,7 @@ export class PaymentService {
       amount: order.amount,
       currency: order.currency,
       name: 'InstaFruit',
-      description: 'Demo payment (₹500)',
+      description: `Demo payment (₹${amount})`,
       onSuccess: (response) => console.log('Razorpay payment success:', response),
     });
   }

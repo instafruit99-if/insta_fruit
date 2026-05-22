@@ -49,7 +49,7 @@ function aggregateCartQuantities(items: CartItem[]): Map<string, number> {
 
 /**
  * Centralized Firestore transactional order engine.
- * Business logic is isolated here for future migration to Cloud Functions.
+ * Centralized Firestore transactional order engine.
  */
 @Injectable({ providedIn: 'root' })
 export class OrderTransactionEngine {

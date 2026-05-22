@@ -1,5 +1,7 @@
 import { Injectable, inject } from '@angular/core';
-import { Functions, httpsCallable } from '@angular/fire/functions';
+import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
+import { environment } from '../../../environments/environment';
 import { Firestore, collection, collectionData, addDoc, query, orderBy, serverTimestamp,
   doc, updateDoc, where } from '@angular/fire/firestore';
 import { Observable } from 'rxjs';
@@ -8,7 +10,7 @@ import { Refund } from '../models';
 @Injectable({ providedIn: 'root' })
 export class RefundsService {
   private readonly db = inject(Firestore);
-  private readonly fns = inject(Functions);
+  private readonly http = inject(HttpClient);
   private readonly col = collection(this.db, 'refunds');
 
   list(): Observable<Refund[]> {
@@ -33,9 +35,12 @@ export class RefundsService {
   }
 
   async approveAndProcess(orderId: string, reason: string): Promise<{ success: boolean; razorpayRefundId: string }> {
-    const fn = httpsCallable<{ orderId: string; reason: string }, { success: boolean; razorpayRefundId: string }>(
-      this.fns, 'processRefund');
-    return (await fn({ orderId, reason })).data;
+    return firstValueFrom(
+      this.http.post<{ success: boolean; razorpayRefundId: string }>(
+        `${environment.apiUrl}/api/refunds/process`,
+        { orderId, reason },
+      ),
+    );
   }
 
   async reject(refundId: string): Promise<void> {
