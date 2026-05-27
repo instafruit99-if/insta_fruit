@@ -1,7 +1,5 @@
 export interface CreateOrderRequest {
-  amount: number;
-  currency?: string;
-  receipt?: string;
+  orderId: string;
 }
 
 export interface CreateOrderResponse {

@@ -1,0 +1,15 @@
+{
+  "frontendOrigins": [
+    "http://localhost:3000",
+    "http://localhost:4200",
+    "https://instafruit99-if.github.io",
+    "https://instafruit99-13755.web.app",
+    "https://instafruit99-13755.firebaseapp.com"
+  ],
+  "firebaseAuthAuthorizedDomains": [
+    "instafruit99-if.github.io",
+    "instafruit99-13755.web.app",
+    "instafruit99-13755.firebaseapp.com",
+    "localhost"
+  ]
+}

@@ -30,7 +30,7 @@ import {
   validatePaymentTransition,
 } from './payment-validation';
 
-interface CreateRazorpayInput { orderId: string; amount: number; currency?: 'INR'; }
+interface CreateRazorpayInput { orderId: string; }
 interface CreateRazorpayResult { razorpayOrderId: string; amount: number; currency: 'INR'; }
 interface VerifyRazorpayInput {
   razorpayOrderId: string;
@@ -84,23 +84,16 @@ export class PaymentEngineService {
     });
   }
 
-  private razorpayChargeAmount(cartAmountInr: number): number {
-    const testAmount = environment.razorpayTestAmountInr;
-    return testAmount != null ? testAmount : cartAmountInr;
-  }
-
   private async processRazorpay(input: CheckoutPaymentInput): Promise<CheckoutPaymentResult> {
     this.retry.assertCanRetry(input.orderId);
-    const chargeAmount = this.razorpayChargeAmount(input.amount);
 
     let razorpayOrderId: string | undefined;
     try {
       const rzpOrder = await this.createRazorpayOrderViaBackend({
         orderId: input.orderId,
-        amount: chargeAmount,
-        currency: 'INR',
       });
       razorpayOrderId = rzpOrder.razorpayOrderId;
+      const chargeAmount = rzpOrder.amount;
 
       await this.createRazorpayPaymentDoc({
         razorpayOrderId: rzpOrder.razorpayOrderId,
@@ -223,20 +216,18 @@ export class PaymentEngineService {
   private async createRazorpayOrderViaBackend(
     input: CreateRazorpayInput,
   ): Promise<CreateRazorpayResult> {
+    const headers = await this.authHeaders();
     const created = await firstValueFrom(
       this.http.post<CreateOrderResponse>(
         `${environment.apiUrl}/api/payment/create-order`,
-        {
-          amount: input.amount,
-          currency: input.currency ?? 'INR',
-          receipt: input.orderId,
-        },
+        { orderId: input.orderId },
+        { headers },
       ),
     );
 
     return {
       razorpayOrderId: created.id,
-      amount: input.amount,
+      amount: created.amount / 100,
       currency: 'INR',
     };
   }
@@ -271,12 +262,24 @@ export class PaymentEngineService {
       razorpaySignature: input.razorpaySignature,
       orderId: input.orderId,
     };
-    return firstValueFrom(
-      this.http.post<VerifyPaymentResponse>(
-        `${environment.apiUrl}/api/payment/verify`,
-        body,
+    return this.authHeaders().then((headers) =>
+      firstValueFrom(
+        this.http.post<VerifyPaymentResponse>(
+          `${environment.apiUrl}/api/payment/verify`,
+          body,
+          { headers },
+        ),
       ),
     );
+  }
+
+  private async authHeaders(): Promise<{ Authorization: string }> {
+    const user = this.auth.currentUser;
+    if (!user) {
+      throw paymentError('INVALID_REQUEST');
+    }
+    const token = await user.getIdToken();
+    return { Authorization: `Bearer ${token}` };
   }
 
   static toUserMessage(error: unknown): string {

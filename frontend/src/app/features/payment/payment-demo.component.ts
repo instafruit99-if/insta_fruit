@@ -20,18 +20,27 @@ import { BottomNavbarComponent } from '../../shared/bottom-navbar.component';
 
       <div class="px-5 pt-6">
         <p class="text-[12px] text-text-secondary mb-4">
-          Temporary demo: creates a ₹500 Razorpay order via backend and opens checkout.
+          Demo requires a real order id from checkout. Place an order first, then paste its id below.
         </p>
+
+        <input
+          type="text"
+          data-testid="demo-order-id-input"
+          class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft mb-3"
+          placeholder="Order ID"
+          [value]="orderId()"
+          (input)="orderId.set(($any($event.target).value))"
+        />
 
         <button
           type="button"
           data-testid="demo-razorpay-pay-btn"
           (click)="pay()"
-          [disabled]="loading()"
+          [disabled]="loading() || !orderId().trim()"
           class="w-full flex items-center justify-center gap-2 bg-primary text-white font-bold text-[14px] py-3.5 rounded-card shadow-soft disabled:opacity-60"
         >
           <lucide-icon [img]="CardIcon" [size]="18"></lucide-icon>
-          {{ loading() ? 'Opening…' : 'Pay ₹500 (Demo)' }}
+          {{ loading() ? 'Opening…' : 'Pay with Razorpay (Demo)' }}
         </button>
 
         @if (error()) {
@@ -51,6 +60,7 @@ export class PaymentDemoComponent {
   readonly CardIcon = CreditCard;
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
+  readonly orderId = signal('');
 
   back(): void {
     this.location.back();
@@ -60,7 +70,7 @@ export class PaymentDemoComponent {
     this.error.set(null);
     this.loading.set(true);
     try {
-      await this.payment.runDemoPayment();
+      await this.payment.runDemoPayment(this.orderId().trim());
     } catch (e) {
       this.error.set(e instanceof Error ? e.message : 'Payment failed');
     } finally {

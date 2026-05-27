@@ -1,0 +1,31 @@
+# Render.com — production backend (HTTPS).
+# Connect repo at https://dashboard.render.com → New → Blueprint → this file.
+# After deploy, set BACKEND_API_URL in GitHub repo secrets to the Render service URL.
+
+services:
+  - type: web
+    name: instafruit-backend
+    runtime: node
+    region: singapore
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGINS
+        value: https://instafruit99-if.github.io,https://instafruit99-13755.web.app,https://instafruit99-13755.firebaseapp.com
+      - key: FIREBASE_SERVICE_ACCOUNT_PATH
+        value: src/config/service-account.json
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false

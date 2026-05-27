@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { Auth } from '@angular/fire/auth';
 import { Observable, firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { PaymentEngineService } from '../payment/payment-engine.service';
@@ -19,13 +20,27 @@ import { RazorpaySuccess } from './razorpay.service';
 @Injectable({ providedIn: 'root' })
 export class PaymentService {
   private readonly http = inject(HttpClient);
+  private readonly auth = inject(Auth);
   private readonly engine = inject(PaymentEngineService);
 
   createOrder(request: CreateOrderRequest): Observable<CreateOrderResponse> {
-    return this.http.post<CreateOrderResponse>(
-      `${environment.apiUrl}/api/payment/create-order`,
-      request,
-    );
+    return new Observable((subscriber) => {
+      this.authHeaders()
+        .then((headers) =>
+          firstValueFrom(
+            this.http.post<CreateOrderResponse>(
+              `${environment.apiUrl}/api/payment/create-order`,
+              request,
+              { headers },
+            ),
+          ),
+        )
+        .then((response) => {
+          subscriber.next(response);
+          subscriber.complete();
+        })
+        .catch((error) => subscriber.error(error));
+    });
   }
 
   openRazorpayCheckout(input: OpenRazorpayCheckoutInput): void {
@@ -47,19 +62,16 @@ export class PaymentService {
     instance.open();
   }
 
-  /** Demo flow: backend order → Razorpay popup (uses razorpayTestAmountInr when set). */
-  async runDemoPayment(): Promise<void> {
-    const amount = environment.razorpayTestAmountInr ?? 500;
-    const order = await firstValueFrom(
-      this.createOrder({ amount, currency: 'INR', receipt: `demo_${Date.now()}` }),
-    );
+  /** Demo flow requires a real Firestore order id (use checkout for end-to-end payment). */
+  async runDemoPayment(orderId: string): Promise<void> {
+    const order = await firstValueFrom(this.createOrder({ orderId }));
 
     this.openRazorpayCheckout({
       orderId: order.id,
       amount: order.amount,
       currency: order.currency,
       name: 'InstaFruit',
-      description: `Demo payment (₹${amount})`,
+      description: 'Demo payment',
       onSuccess: (response) => console.log('Razorpay payment success:', response),
     });
   }
@@ -77,5 +89,14 @@ export class PaymentService {
       return error.message;
     }
     return PaymentEngineService.toUserMessage(error);
+  }
+
+  private async authHeaders(): Promise<{ Authorization: string }> {
+    const user = this.auth.currentUser;
+    if (!user) {
+      throw new Error('Sign in required');
+    }
+    const token = await user.getIdToken();
+    return { Authorization: `Bearer ${token}` };
   }
 }

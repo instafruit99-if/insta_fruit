@@ -33,10 +33,18 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Configure production environment
+        working-directory: frontend
+        env:
+          BACKEND_API_URL: ${{ secrets.BACKEND_API_URL }}
+          RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID }}
+        run: node scripts/write-production-env.js
+
       - name: Build for GitHub Pages
         working-directory: frontend
         env:
-          BASE_HREF: /${{ github.event.repository.name }}/
+          # User site (username.github.io): use '/'. Project site: '/repo-name/'
+          BASE_HREF: ${{ vars.FRONTEND_BASE_HREF || '/' }}
         run: npx ng build --configuration production --base-href "$BASE_HREF"
 
       - name: SPA fallback (deep links / refresh)
