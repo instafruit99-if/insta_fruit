@@ -23,7 +23,7 @@ interface Step {
               [class.bg-primary-light]="i > activeIndex()"
               [class.text-primary]="i > activeIndex()"
             >
-              @if (i < activeIndex()) {
+              @if (stepDone(i)) {
                 <lucide-icon [img]="CheckIcon" [size]="18"></lucide-icon>
               } @else {
                 <lucide-icon [img]="s.icon" [size]="18"></lucide-icon>
@@ -43,9 +43,9 @@ interface Step {
               [class.text-text-primary]="i <= activeIndex()"
               [class.text-text-secondary]="i > activeIndex()"
             >{{ s.label }}</p>
-            @if (i === activeIndex()) {
+            @if (stepInProgress(i)) {
               <p class="text-[11px] text-primary font-semibold mt-0.5">In progress…</p>
-            } @else if (i < activeIndex()) {
+            } @else if (stepDone(i)) {
               <p class="text-[11px] text-text-secondary mt-0.5">Completed</p>
             } @else {
               <p class="text-[11px] text-text-secondary/60 mt-0.5">Pending</p>
@@ -68,4 +68,17 @@ export class OrderStatusStepperComponent {
     { label: 'Out for Delivery', icon: Truck },
     { label: 'Delivered', icon: MapPin },
   ];
+
+  /** Step is finished (including final step when order is delivered). */
+  stepDone(stepIndex: number): boolean {
+    const active = this.activeIndex();
+    const last = this.steps.length - 1;
+    return stepIndex < active || (active === last && stepIndex === last);
+  }
+
+  /** Only non-terminal active steps show in-progress. */
+  stepInProgress(stepIndex: number): boolean {
+    const active = this.activeIndex();
+    return stepIndex === active && active < this.steps.length - 1;
+  }
 }

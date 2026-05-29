@@ -22,6 +22,14 @@ function initializeFirebase() {
     return admin.app();
   }
 
+  const jsonEnv = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (jsonEnv) {
+    const serviceAccount = JSON.parse(jsonEnv);
+    return admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+  }
+
   const serviceAccountPath = resolveServiceAccountPath();
   const serviceAccount = JSON.parse(
     fs.readFileSync(serviceAccountPath, 'utf8'),
