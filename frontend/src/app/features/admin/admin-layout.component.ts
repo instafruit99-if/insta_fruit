@@ -17,7 +17,7 @@ import { AuthService } from '../../core/services/auth.service';
     .nav-active lucide-icon { color: #08B44D !important; }
   `],
   template: `
-    <div data-testid="admin-layout" class="min-h-screen bg-[#F9F9F9] flex flex-col md:flex-row font-sans">
+    <div data-testid="admin-layout" class="min-h-screen md:h-full bg-[#F9F9F9] flex flex-col md:flex-row font-sans">
       
       <!-- Sidebar / Topbar -->
       <aside class="w-full md:w-[260px] bg-white border-b md:border-b-0 md:border-r border-border-soft flex flex-col shadow-[2px_0_8px_rgba(0,0,0,0.02)] z-10 shrink-0">
