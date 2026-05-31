@@ -46,6 +46,13 @@ import { AuthService } from '../../core/services/auth.service';
             <a data-testid="forgot-password" (click)="forgot()" class="text-[12px] text-primary font-semibold cursor-pointer">Forgot password?</a>
           </div>
 
+          @if (resetSent()) {
+            <div class="bg-green-50 text-green-700 rounded-input px-4 py-3 text-[12px] font-medium flex items-center gap-2">
+              <lucide-icon [img]="MailIcon" [size]="14"></lucide-icon>
+              Password reset email sent to {{ email }}
+            </div>
+          }
+
           @if (error()) {
             <div class="bg-red-50 text-red-600 rounded-input px-4 py-3 text-[12px] font-medium flex items-center gap-2" data-testid="login-error">
               <lucide-icon [img]="AlertIcon" [size]="14"></lucide-icon>
@@ -86,6 +93,7 @@ export class LoginComponent {
   showPwd = signal(false);
   loading = signal(false);
   error = signal('');
+  resetSent = signal(false);
   readonly MailIcon = Mail; readonly LockIcon = Lock; readonly EyeIcon = Eye; readonly EyeOffIcon = EyeOff;
   readonly AlertIcon = AlertCircle;
 
@@ -110,7 +118,7 @@ export class LoginComponent {
     try {
       await this.auth.resetPassword(this.email.trim());
       this.error.set('');
-      alert('Password reset email sent to ' + this.email);
+      this.resetSent.set(true);
     } catch (e) { this.error.set(this.friendly(e)); }
   }
 

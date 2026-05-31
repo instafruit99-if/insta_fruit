@@ -1,7 +1,7 @@
 import { Component, computed, inject } from '@angular/core';
 import { CommonModule, Location } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
-import { LucideAngularModule, ChevronLeft, Phone, MessageSquare, Home } from 'lucide-angular';
+import { LucideAngularModule, ChevronLeft, Phone, Home } from 'lucide-angular';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { OrdersService } from '../../core/services/orders.service';
 import { Order } from '../../core/models';
@@ -54,21 +54,25 @@ import { TRACK_ORDER_STEP_COUNT, trackOrderStepIndex } from '../../core/order-li
         </div>
       </div>
 
-      <div class="px-5 mt-5">
-        <div data-testid="delivery-agent" class="bg-white rounded-card p-4 shadow-soft flex items-center gap-3">
-          <img src="https://i.pravatar.cc/64?img=33" alt="agent" class="w-12 h-12 rounded-full object-cover" />
-          <div class="flex-1">
-            <p class="text-[14px] font-bold text-text-primary">Marcus Rivera</p>
-            <p class="text-[11px] text-text-secondary">Your delivery partner</p>
+      @if (order()?.assignedAgentName) {
+        <div class="px-5 mt-5">
+          <div data-testid="delivery-agent" class="bg-white rounded-card p-4 shadow-soft flex items-center gap-3">
+            <div class="w-12 h-12 rounded-full bg-primary-light flex items-center justify-center shrink-0">
+              <span class="text-[20px]">🛵</span>
+            </div>
+            <div class="flex-1">
+              <p class="text-[14px] font-bold text-text-primary">{{ order()?.assignedAgentName }}</p>
+              <p class="text-[11px] text-text-secondary">Your delivery partner</p>
+            </div>
+            @if (order()?.assignedAgentPhone) {
+              <a [href]="'tel:' + order()?.assignedAgentPhone"
+                 class="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
+                <lucide-icon [img]="PhoneIcon" [size]="16" class="text-white"></lucide-icon>
+              </a>
+            }
           </div>
-          <button class="w-10 h-10 rounded-full bg-primary-light flex items-center justify-center">
-            <lucide-icon [img]="MessageIcon" [size]="16" class="text-primary"></lucide-icon>
-          </button>
-          <button class="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
-            <lucide-icon [img]="PhoneIcon" [size]="16" class="text-white"></lucide-icon>
-          </button>
         </div>
-      </div>
+      }
 
       <div class="px-5 mt-6 pb-12">
         <h2 class="text-[14px] font-bold text-text-primary mb-4">Order Status</h2>
@@ -91,7 +95,6 @@ export class TrackOrderComponent {
 
   readonly ChevronIcon = ChevronLeft;
   readonly PhoneIcon = Phone;
-  readonly MessageIcon = MessageSquare;
   readonly HomeIcon = Home;
 
   private readonly orderId = this.route.snapshot.paramMap.get('id') ?? '';

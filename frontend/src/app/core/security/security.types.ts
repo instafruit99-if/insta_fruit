@@ -29,7 +29,6 @@ export interface CreateOrderSecurityInput {
   userName: string;
   userPhone: string;
   paymentMethod: string;
-  deliverySlot: string;
   address: {
     label: string;
     line1: string;

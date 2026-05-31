@@ -1,7 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { LucideAngularModule, LayoutDashboard, Package, FolderTree, Image, ShoppingBag, Users, Undo2, LogOut, Leaf, ArrowLeft } from 'lucide-angular';
+import { LucideAngularModule, LayoutDashboard, Package, FolderTree, Image, ShoppingBag, Users, Undo2, LogOut, Leaf, ArrowLeft, Bike } from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
 
 @Component({
@@ -91,6 +91,7 @@ export class AdminLayoutComponent {
     { id: 'categories', label: 'Categories', path: '/admin/categories', icon: FolderTree },
     { id: 'banners', label: 'Banners', path: '/admin/banners', icon: Image },
     { id: 'orders', label: 'Orders', path: '/admin/orders', icon: ShoppingBag },
+    { id: 'agents', label: 'Delivery Agents', path: '/admin/agents', icon: Bike },
     { id: 'users', label: 'Users', path: '/admin/users', icon: Users },
     { id: 'refunds', label: 'Refunds', path: '/admin/refunds', icon: Undo2 },
   ];

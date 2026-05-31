@@ -157,11 +157,7 @@ export class OrderTransactionEngine {
         });
 
         subtotal = +subtotal.toFixed(2);
-        const deliveryMeta = buildOrderDeliveryFields(
-          subtotal,
-          input.deliverySlot,
-          true,
-        );
+        const deliveryMeta = buildOrderDeliveryFields(subtotal, true);
         const deliveryFee = calculateDeliveryFee(subtotal);
         const total = +(subtotal + deliveryFee).toFixed(2);
         const eta = Timestamp.fromDate(deliveryMeta.estimatedArrivalTime);
@@ -177,7 +173,6 @@ export class OrderTransactionEngine {
           paymentMethod: input.paymentMethod,
           paymentStatus: 'pending',
           orderStatus: 'placed',
-          deliverySlot: deliveryMeta.deliverySlot,
           estimatedArrivalTime: eta,
           estimatedDeliveryTime: deliveryMeta.estimatedDeliveryTime,
           estimatedPreparationTime: deliveryMeta.estimatedPreparationTime,

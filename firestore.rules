@@ -102,7 +102,6 @@ service cloud.firestore {
         && validDeliveryFeeOnCreate()
         && d.total is number && d.total >= 0
         && d.total == d.subtotal + d.deliveryFee
-        && d.deliverySlot is string && d.deliverySlot.size() > 0
         && (!('deliveryEligible' in d) || d.deliveryEligible == true)
         && d.products is list
         && d.products.size() > 0
@@ -113,12 +112,12 @@ service cloud.firestore {
 
     function orderLifecycleFieldsOnly() {
       return request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['orderStatus', 'currentStatus', 'statusUpdatedAt', 'updatedAt', 'timeline', 'cancelReason']);
+        .hasOnly(['orderStatus', 'currentStatus', 'statusUpdatedAt', 'updatedAt', 'timeline',
+                  'cancelReason', 'assignedAgentId', 'assignedAgentName', 'assignedAgentPhone']);
     }
 
     function orderDeliveryFieldsUnchanged() {
       return request.resource.data.deliveryFee == resource.data.deliveryFee
-        && request.resource.data.deliverySlot == resource.data.deliverySlot
         && request.resource.data.subtotal == resource.data.subtotal
         && request.resource.data.total == resource.data.total;
     }
@@ -224,6 +223,11 @@ service cloud.firestore {
     // Order idempotency fingerprints: Cloud Functions only.
     match /orderIdempotency/{docId} {
       allow read, write: if false;
+    }
+
+    // Delivery agents: admin full access; no customer access.
+    match /deliveryAgents/{agentId} {
+      allow read, write: if isAdmin();
     }
 
     // Audit logs: admin create/read only; immutable.

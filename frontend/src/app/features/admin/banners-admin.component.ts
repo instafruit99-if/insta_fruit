@@ -6,11 +6,12 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { BannersService } from '../../core/services/banners.service';
 import { StorageService } from '../../core/services/storage.service';
 import { Banner } from '../../core/models';
+import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
 
 @Component({
   selector: 'app-banners-admin',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule, ConfirmDialogComponent],
   template: `
     <div data-testid="banners-admin" class="space-y-5">
       <div class="flex items-center justify-between">
@@ -42,6 +43,15 @@ import { Banner } from '../../core/models';
           </div>
         } @empty { <p class="text-text-secondary text-[13px] py-6">No banners yet.</p> }
       </div>
+
+      @if (bannerToDelete()) {
+        <app-confirm-dialog
+          title="Delete Banner"
+          message="Delete this banner? This cannot be undone."
+          confirmLabel="Delete"
+          (confirmed)="confirmDelete()"
+          (cancelled)="bannerToDelete.set(null)" />
+      }
 
       @if (modal()) {
         <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" (click)="modal.set(false)">
@@ -89,6 +99,7 @@ export class BannersAdminComponent {
     title: '', subtitle: '', ctaLabel: 'Shop Now', imageUrl: '', redirectUrl: '/products', isActive: true,
   });
   readonly uploading = signal(false);
+  readonly bannerToDelete = signal<string | null>(null);
   readonly PlusIcon = Plus; readonly EditIcon = Pencil; readonly TrashIcon = Trash2;
   readonly UploadIcon = Upload; readonly XIcon = X; readonly LoaderIcon = Loader2;
 
@@ -120,5 +131,11 @@ export class BannersAdminComponent {
     } finally { this.saving.set(false); }
   }
   async toggle(b: Banner): Promise<void> { await this.bannersSvc.update(b.id, { isActive: !b.isActive }); }
-  async remove(id: string): Promise<void> { if (confirm('Delete banner?')) await this.bannersSvc.remove(id); }
+  remove(id: string): void { this.bannerToDelete.set(id); }
+  async confirmDelete(): Promise<void> {
+    const id = this.bannerToDelete();
+    if (!id) return;
+    this.bannerToDelete.set(null);
+    await this.bannersSvc.remove(id);
+  }
 }

@@ -9,7 +9,6 @@ export interface CreateOrderInput {
   userName: string;
   userPhone: string;
   paymentMethod: PaymentMethod;
-  deliverySlot: string;
   address: Address;
 }
 

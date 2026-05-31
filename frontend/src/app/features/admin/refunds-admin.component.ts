@@ -1,14 +1,15 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LucideAngularModule } from 'lucide-angular';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { RefundsService } from '../../core/services/refunds.service';
 import { Refund } from '../../core/models';
+import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
 
 @Component({
   selector: 'app-refunds-admin',
   standalone: true,
-  imports: [CommonModule, LucideAngularModule],
+  imports: [CommonModule, LucideAngularModule, ConfirmDialogComponent],
   template: `
     <div data-testid="refunds-admin" class="space-y-5">
       <h1 class="text-[22px] font-extrabold">Refunds</h1>
@@ -42,19 +43,37 @@ import { Refund } from '../../core/models';
             </tbody>
           </table>
         </div>
-      </div>
+      @if (refundToApprove()) {
+        <app-confirm-dialog
+          title="Process Refund"
+          [message]="approveMessage()"
+          confirmLabel="Yes, Refund"
+          (confirmed)="confirmApprove()"
+          (cancelled)="refundToApprove.set(null)" />
+      }
     </div>
   `,
 })
 export class RefundsAdminComponent {
   private readonly refundsSvc = inject(RefundsService);
   readonly refunds = toSignal(this.refundsSvc.list(), { initialValue: [] as Refund[] });
-  async approve(r: Refund): Promise<void> {
-    if (!confirm(`Refund ₹${r.amount} to order ${r.orderId}?`)) return;
+  readonly refundToApprove = signal<Refund | null>(null);
+  readonly refundError = signal('');
+  readonly approveMessage = computed(() => {
+    const r = this.refundToApprove();
+    return r ? `Refund ₹${r.amount.toFixed(0)} to order #${r.orderId.slice(-8).toUpperCase()}?` : '';
+  });
+
+  approve(r: Refund): void { this.refundToApprove.set(r); }
+
+  async confirmApprove(): Promise<void> {
+    const r = this.refundToApprove();
+    if (!r) return;
+    this.refundToApprove.set(null);
     try {
       await this.refundsSvc.approveAndProcess(r.orderId, r.reason);
-      alert('Refund processed successfully');
-    } catch (e) { alert('Refund failed: ' + ((e as Error).message ?? '')); }
+    } catch (e) { this.refundError.set('Refund failed: ' + ((e as Error).message ?? '')); }
   }
+
   async reject(refundId: string): Promise<void> { await this.refundsSvc.reject(refundId); }
 }

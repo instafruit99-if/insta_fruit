@@ -14,7 +14,6 @@ import { AddressError } from '../../core/address/address-errors';
 import { AddressLabelType, SavedAddress } from '../../core/address/address.types';
 import { normalizeLabel } from '../../core/address/address-validation';
 import { DeliveryEngineService } from '../../core/delivery/delivery-engine.service';
-import { DeliverySlotId } from '../../core/delivery/delivery-config.constants';
 import { DeliveryError } from '../../core/delivery/delivery-errors';
 
 @Component({
@@ -101,19 +100,6 @@ import { DeliveryError } from '../../core/delivery/delivery-errors';
           }
         </div>
 
-        <div>
-          <h2 class="text-[14px] font-bold text-text-primary mb-2">Delivery Slot</h2>
-          <div class="bg-white rounded-card p-4 shadow-soft">
-            <select data-testid="delivery-slot-select" [ngModel]="selectedSlot()" (ngModelChange)="selectedSlot.set($event)"
-                    class="w-full text-[13px] font-semibold text-text-primary px-2 py-1 rounded-input border border-border-soft bg-white">
-              @for (slot of availableSlots(); track slot.id) {
-                <option [value]="slot.id" [disabled]="!slot.available">
-                  {{ slot.label }}@if (slot.isNextAvailable) { (next available) }
-                </option>
-              }
-            </select>
-          </div>
-        </div>
 
         <div>
           <h2 class="text-[14px] font-bold text-text-primary mb-2">Payment Method</h2>
@@ -232,8 +218,6 @@ export class CheckoutComponent {
   private readonly addressEngine = inject(AddressEngineService);
   private readonly deliveryEngine = inject(DeliveryEngineService);
 
-  readonly selectedSlot = signal<DeliverySlotId>(this.deliveryEngine.defaultSlot());
-  readonly availableSlots = computed(() => this.deliveryEngine.getAvailableSlots());
   readonly deliveryQuote = computed(() => this.deliveryEngine.quoteCheckout(this.cart.subtotal()));
   readonly freeDeliveryMessage = computed(() => {
     if (this.cart.items().length === 0) return null;
@@ -386,7 +370,6 @@ export class CheckoutComponent {
       this.deliveryEngine.validateCheckout({
         subtotal: this.cart.subtotal(),
         pincode: address.postalCode,
-        deliverySlot: this.selectedSlot(),
       });
       await this.cart.ensurePersisted();
       const orderId = await this.orders.create({
@@ -394,7 +377,6 @@ export class CheckoutComponent {
         userName,
         userPhone,
         paymentMethod: this.payment(),
-        deliverySlot: this.selectedSlot(),
         subtotal: this.cart.subtotal(),
         address,
       });

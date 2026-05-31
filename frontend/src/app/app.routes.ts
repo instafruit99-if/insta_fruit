@@ -110,6 +110,7 @@ export const routes: Routes = [
       { path: 'orders',     loadComponent: () => import('./features/admin/orders-admin.component').then((m) => m.OrdersAdminComponent) },
       { path: 'users',      loadComponent: () => import('./features/admin/users-admin.component').then((m) => m.UsersAdminComponent) },
       { path: 'refunds',    loadComponent: () => import('./features/admin/refunds-admin.component').then((m) => m.RefundsAdminComponent) },
+      { path: 'agents',     loadComponent: () => import('./features/admin/delivery-agents-admin.component').then((m) => m.DeliveryAgentsAdminComponent) },
     ],
   },
 

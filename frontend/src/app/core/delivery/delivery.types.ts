@@ -1,5 +1,3 @@
-import { DeliverySlotId } from './delivery-config.constants';
-
 export interface DeliveryQuote {
   subtotal: number;
   deliveryFee: number;
@@ -11,13 +9,6 @@ export interface DeliveryQuote {
   meetsMinimumOrder: boolean;
 }
 
-export interface DeliverySlotOption {
-  id: DeliverySlotId;
-  label: string;
-  available: boolean;
-  isNextAvailable?: boolean;
-}
-
 export interface DeliveryEstimate {
   estimatedArrivalTime: Date;
   estimatedDeliveryTime: string;
@@ -27,12 +18,10 @@ export interface DeliveryEstimate {
 export interface CheckoutDeliveryValidationInput {
   subtotal: number;
   pincode: string;
-  deliverySlot: string;
 }
 
 export interface OrderDeliveryFields {
   deliveryFee: number;
-  deliverySlot: string;
   estimatedArrivalTime: Date;
   estimatedDeliveryTime: string;
   estimatedPreparationTime: number;

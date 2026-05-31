@@ -7,11 +7,12 @@ import { ProductsService } from '../../core/services/products.service';
 import { CategoriesService } from '../../core/services/categories.service';
 import { StorageService } from '../../core/services/storage.service';
 import { Product } from '../../core/models';
+import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
 
 @Component({
   selector: 'app-products-admin',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule, ConfirmDialogComponent],
   template: `
     <div data-testid="products-admin" class="space-y-5">
       <div class="flex items-center justify-between">
@@ -103,6 +104,15 @@ import { Product } from '../../core/models';
           </div>
         </div>
       }
+
+      @if (productToDelete()) {
+        <app-confirm-dialog
+          title="Delete Product"
+          message="Delete this product? This cannot be undone."
+          confirmLabel="Delete"
+          (confirmed)="confirmDelete()"
+          (cancelled)="productToDelete.set(null)" />
+      }
     </div>
   `,
 })
@@ -116,6 +126,7 @@ export class ProductsAdminComponent {
 
   readonly modal = signal(false);
   readonly saving = signal(false);
+  readonly productToDelete = signal<string | null>(null);
   readonly form = signal<{ id?: string; name: string; description: string; price: number; stock: number; unit: string; categoryId: string; thumbnail: string; isAvailable: boolean; }>({
     name: '', description: '', price: 0, stock: 0, unit: '', categoryId: '', thumbnail: '', isAvailable: true,
   });
@@ -165,5 +176,11 @@ export class ProductsAdminComponent {
   }
 
   async toggle(p: Product): Promise<void> { await this.productsSvc.update(p.id, { isAvailable: !p.isAvailable }); }
-  async remove(id: string): Promise<void> { if (confirm('Delete this product?')) await this.productsSvc.remove(id); }
+  remove(id: string): void { this.productToDelete.set(id); }
+  async confirmDelete(): Promise<void> {
+    const id = this.productToDelete();
+    if (!id) return;
+    this.productToDelete.set(null);
+    await this.productsSvc.remove(id);
+  }
 }

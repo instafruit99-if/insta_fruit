@@ -55,9 +55,6 @@ export function validateCreateOrderPayload(data: CreateOrderInput): CreateOrderI
   if (!isNonEmptyString(data.userName) || !isNonEmptyString(data.userPhone)) {
     throw orderTransactionError('INVALID_CART');
   }
-  if (!isNonEmptyString(data.deliverySlot)) {
-    throw orderTransactionError('INVALID_CART');
-  }
   if (!isValidPaymentMethod(data.paymentMethod)) {
     throw orderTransactionError('INVALID_CART');
   }
@@ -66,7 +63,6 @@ export function validateCreateOrderPayload(data: CreateOrderInput): CreateOrderI
     userName: data.userName.trim(),
     userPhone: data.userPhone.trim(),
     paymentMethod: data.paymentMethod,
-    deliverySlot: data.deliverySlot.trim(),
     address: validateAddress(data.address),
   };
 }

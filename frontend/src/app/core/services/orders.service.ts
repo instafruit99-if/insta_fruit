@@ -64,7 +64,7 @@ export class OrdersService {
   }
 
   async create(
-    order: Pick<Order, 'userName' | 'userPhone' | 'paymentMethod' | 'deliverySlot' | 'address'> & {
+    order: Pick<Order, 'userName' | 'userPhone' | 'paymentMethod' | 'address'> & {
       requestId?: string;
       subtotal: number;
     },
@@ -72,7 +72,6 @@ export class OrdersService {
     const requestId = order.requestId ?? crypto.randomUUID();
     const deliveryFields = this.delivery.buildOrderFields(
       order.subtotal,
-      order.deliverySlot,
       order.address.postalCode,
     );
     const userPhone = order.userPhone.replace(/\D/g, '').slice(-10);
@@ -80,7 +79,6 @@ export class OrdersService {
       userName: order.userName.trim(),
       userPhone,
       paymentMethod: order.paymentMethod,
-      deliverySlot: deliveryFields.deliverySlot,
       address: {
         ...order.address,
         country: order.address.country?.trim() || 'India',

@@ -135,13 +135,15 @@ export interface Order {
   currentStatus?: OrderLifecycleStatus;
   statusUpdatedAt?: Timestamp | Date;
   timeline?: OrderTimelineEntry[];
-  deliverySlot: string;
   estimatedArrivalTime: Timestamp | Date;
   /** Human-readable delivery window label (e.g. "7AM – 9AM"). */
   estimatedDeliveryTime?: string;
   estimatedPreparationTime?: number;
   deliveryEligible?: boolean;
   address: Address;
+  assignedAgentId?: string;
+  assignedAgentName?: string;
+  assignedAgentPhone?: string;
   cancelReason?: string;
   createdAt: Timestamp | Date;
   updatedAt: Timestamp | Date;
@@ -159,6 +161,15 @@ export interface Payment {
   method: PaymentMethod;
   status: PaymentStatus;
   createdAt: Timestamp | Date;
+}
+
+export interface DeliveryAgent {
+  id: string;
+  name: string;
+  phone: string;
+  isActive: boolean;
+  createdAt: Timestamp | Date;
+  updatedAt: Timestamp | Date;
 }
 
 export interface Refund {

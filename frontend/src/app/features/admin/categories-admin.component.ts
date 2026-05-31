@@ -6,11 +6,12 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { CategoriesService } from '../../core/services/categories.service';
 import { StorageService } from '../../core/services/storage.service';
 import { Category } from '../../core/models';
+import { ConfirmDialogComponent } from '../../shared/confirm-dialog.component';
 
 @Component({
   selector: 'app-categories-admin',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule, ConfirmDialogComponent],
   template: `
     <div data-testid="categories-admin" class="space-y-5">
       <div class="flex items-center justify-between">
@@ -40,6 +41,15 @@ import { Category } from '../../core/models';
           } @empty { <p class="col-span-full text-text-secondary text-center py-6 text-[13px]">No categories yet.</p> }
         </div>
       </div>
+
+      @if (catToDelete()) {
+        <app-confirm-dialog
+          title="Delete Category"
+          message="Delete this category? This cannot be undone."
+          confirmLabel="Delete"
+          (confirmed)="confirmDelete()"
+          (cancelled)="catToDelete.set(null)" />
+      }
 
       @if (modal()) {
         <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" (click)="modal.set(false)">
@@ -75,6 +85,7 @@ export class CategoriesAdminComponent {
   readonly categories = toSignal(this.catsSvc.listAll(), { initialValue: [] as Category[] });
   readonly modal = signal(false);
   readonly saving = signal(false);
+  readonly catToDelete = signal<string | null>(null);
   readonly form = signal<{ id?: string; name: string; icon: string; imageUrl: string; isActive: boolean; }>({
     name: '', icon: '🍎', imageUrl: '', isActive: true,
   });
@@ -102,5 +113,11 @@ export class CategoriesAdminComponent {
       this.modal.set(false);
     } finally { this.saving.set(false); }
   }
-  async remove(id: string): Promise<void> { if (confirm('Delete this category?')) await this.catsSvc.remove(id); }
+  remove(id: string): void { this.catToDelete.set(id); }
+  async confirmDelete(): Promise<void> {
+    const id = this.catToDelete();
+    if (!id) return;
+    this.catToDelete.set(null);
+    await this.catsSvc.remove(id);
+  }
 }

@@ -3,7 +3,6 @@ import { securityError } from './security-errors';
 
 const MAX_NAME_LEN = 120;
 const MAX_PHONE_LEN = 20;
-const MAX_SLOT_LEN = 80;
 const MAX_ADDRESS_LEN = 200;
 const MAX_POSTAL_LEN = 12;
 const MAX_CANCEL_REASON_LEN = 500;
@@ -25,9 +24,6 @@ export function validateCreateOrderInput(input: CreateOrderSecurityInput): void 
   const phoneDigits = String(input.userPhone ?? '').replace(/\D/g, '').slice(-10);
   if (!PHONE_RE.test(phoneDigits)) {
     throw securityError('INVALID_REQUEST', 'Please enter a valid 10-digit mobile number.');
-  }
-  if (!isNonEmptyString(input.deliverySlot, MAX_SLOT_LEN)) {
-    throw securityError('INVALID_REQUEST');
   }
   if (!isValidPaymentMethod(input.paymentMethod)) {
     throw securityError('INVALID_REQUEST');
