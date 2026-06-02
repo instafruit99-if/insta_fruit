@@ -44,7 +44,7 @@ jobs:
         working-directory: frontend
         env:
           # User site (username.github.io): use '/'. Project site: '/repo-name/'
-          BASE_HREF: ${{ vars.FRONTEND_BASE_HREF || '/' }}
+          BASE_HREF: ${{ vars.FRONTEND_BASE_HREF || '/insta_fruit/' }}
         run: npx ng build --configuration production --base-href "$BASE_HREF"
 
       - name: SPA fallback (deep links / refresh)
