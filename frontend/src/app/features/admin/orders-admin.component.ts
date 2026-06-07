@@ -128,6 +128,10 @@ export class OrdersAdminComponent {
         assignedAgentPhone: agent?.phone ?? null,
         updatedAt: serverTimestamp(),
       });
+      // Case: rider assigned when order is already packed → auto-advance to assigned_to_rider
+      if (agent && normalizeOrderStatus(order.orderStatus) === 'packed') {
+        await this.ordersSvc.updateStatus(order.orderId, 'assigned_to_rider');
+      }
     } catch (e) {
       this.statusError.set((e as Error).message ?? 'Agent assignment failed.');
     }
@@ -137,6 +141,7 @@ export class OrdersAdminComponent {
     const current = normalizeOrderStatus(order.orderStatus);
     if (status === current || this.statusUpdating()) return;
 
+    // Rider must be assigned before status can move to assigned_to_rider
     if (status === 'assigned_to_rider' && !order.assignedAgentId) {
       this.statusError.set('Please assign a delivery agent before marking as "Assigned to Rider".');
       return;
@@ -146,6 +151,10 @@ export class OrdersAdminComponent {
     this.statusUpdating.set(true);
     try {
       await this.ordersSvc.updateStatus(order.orderId, status);
+      // Case: rider was pre-assigned and order just reached packed → auto-advance to assigned_to_rider
+      if (status === 'packed' && order.assignedAgentId) {
+        await this.ordersSvc.updateStatus(order.orderId, 'assigned_to_rider');
+      }
     } catch (e) {
       this.statusError.set((e as Error).message);
     } finally {
