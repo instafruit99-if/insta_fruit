@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { LucideAngularModule, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-angular';
-import { AuthService } from '../../core/services/auth.service';
+import { AuthService, friendlyAuthError } from '../../core/services/auth.service';
 
 @Component({
   selector: 'app-login',
@@ -97,8 +97,6 @@ export class LoginComponent {
   readonly MailIcon = Mail; readonly LockIcon = Lock; readonly EyeIcon = Eye; readonly EyeOffIcon = EyeOff;
   readonly AlertIcon = AlertCircle;
 
-  readonly authService = inject(AuthService);
-
   async onSubmit(): Promise<void> {
     if (!this.email || !this.password) { this.error.set('Email and password are required'); return; }
     this.loading.set(true); this.error.set('');
@@ -107,7 +105,7 @@ export class LoginComponent {
       // Wait for profile/role to load via guard, then route.
       this.router.navigate([this.auth.isAdmin() ? '/admin/dashboard' : '/home']);
     } catch (e: unknown) {
-      this.error.set(this.friendly(e));
+      this.error.set(friendlyAuthError(e, 'Login failed'));
     } finally {
       this.loading.set(false);
     }
@@ -119,25 +117,20 @@ export class LoginComponent {
       await this.auth.resetPassword(this.email.trim());
       this.error.set('');
       this.resetSent.set(true);
-    } catch (e) { this.error.set(this.friendly(e)); }
+    } catch (e) { this.error.set(friendlyAuthError(e, 'Failed to send reset email')); }
   }
 
   goPhone(): void { this.router.navigate(['/otp']); }
 
-  private friendly(e: unknown): string {
-    const code = (e as { code?: string })?.code ?? '';
-    if (code.includes('invalid-credential') || code.includes('wrong-password')) return 'Invalid email or password';
-    if (code.includes('user-not-found')) return 'No account with this email';
-    if (code.includes('too-many-requests')) return 'Too many attempts. Try again later';
-    if (code.includes('network-request-failed')) return 'Network error — check connection';
-    return (e as Error)?.message ?? 'Login failed';
-  }
-
-  async loginWithGoogle() {
+  async loginWithGoogle(): Promise<void> {
+    this.loading.set(true); this.error.set('');
     try {
-      await this.authService.signInWithGoogle();
+      await this.auth.signInWithGoogle();
+      this.router.navigate([this.auth.isAdmin() ? '/admin/dashboard' : '/home']);
     } catch (e) {
-      console.log(e);
+      this.error.set(friendlyAuthError(e, 'Google sign-in failed'));
+    } finally {
+      this.loading.set(false);
     }
   }
 }

@@ -21,6 +21,24 @@ function stripUndefinedDeep(value: unknown): unknown {
   );
 }
 
+/** Map Firebase auth errors to user-friendly messages. Shared by login, signup and OTP screens. */
+export function friendlyAuthError(e: unknown, fallback = 'Something went wrong. Please try again'): string {
+  const code = (e as { code?: string })?.code ?? '';
+  if (code.includes('invalid-credential') || code.includes('wrong-password')) return 'Invalid email or password';
+  if (code.includes('user-not-found')) return 'No account with this email';
+  if (code.includes('email-already-in-use')) return 'Email is already registered';
+  if (code.includes('weak-password')) return 'Password is too weak';
+  if (code.includes('invalid-email')) return 'Invalid email address';
+  if (code.includes('invalid-phone-number')) return 'Invalid phone number';
+  if (code.includes('invalid-verification-code')) return 'Incorrect code. Check and try again';
+  if (code.includes('code-expired')) return 'Code expired. Tap Resend OTP to get a new one';
+  if (code.includes('too-many-requests')) return 'Too many attempts. Try again later';
+  if (code.includes('network-request-failed')) return 'Network error — check connection';
+  if (code.includes('popup-closed-by-user') || code.includes('cancelled-popup-request')) return 'Sign-in was cancelled';
+  if (code) return fallback;
+  return (e as Error)?.message || fallback;
+}
+
 /** Normalize legacy Firestore field `profileImageUrl` (Google sign-in) into `profileImage`. */
 function docToAppUser(raw: Record<string, unknown>, uid?: string): AppUser {
   const d = raw as unknown as AppUser & { profileImageUrl?: string };
@@ -49,6 +67,7 @@ export class AuthService {
   readonly isAdmin = signal(false);
 
   private confirmationResult: ConfirmationResult | null = null;
+  private recaptchaVerifier: RecaptchaVerifier | null = null;
 
   constructor() {
     onAuthStateChanged(this.auth, (user) => {
@@ -58,17 +77,34 @@ export class AuthService {
     });
   }
 
+  /** Monotonic token so a slow profile read can never overwrite a newer one (e.g. set by verifyOtp). */
+  private profileLoadSeq = 0;
+
+  /** Single place that applies a profile to the signals; invalidates any in-flight loadProfile read. */
+  private applyProfile(profile: AppUser | null): void {
+    this.profileLoadSeq++;
+    this._profile.set(profile);
+    this.isAdmin.set(profile?.role === 'admin');
+  }
+
   private async loadProfile(uid: string): Promise<void> {
+    const seq = ++this.profileLoadSeq;
     try {
       const ref = doc(this.db, `users/${uid}`);
       const snapshot = await getDoc(ref);
+      if (seq !== this.profileLoadSeq) return; // a newer load/apply won — discard stale read
 
-      if (snapshot.exists()) {
-        this._profile.set(docToAppUser(snapshot.data() as Record<string, unknown>, uid));
-        this.isAdmin.set((this._profile()?.role) === 'admin');
-      } else {
-        this._profile.set(null);
+      const profile = snapshot.exists()
+        ? docToAppUser(snapshot.data() as Record<string, unknown>, uid)
+        : null;
+
+      if (profile?.isBlocked) {
+        await this.signOutUser();
+        return;
       }
+
+      this._profile.set(profile);
+      this.isAdmin.set(profile?.role === 'admin');
     } catch (e) {
       console.log(e);
     } finally {
@@ -126,7 +162,23 @@ export class AuthService {
   }
 
   async signIn(email: string, password: string): Promise<void> {
-    await signInWithEmailAndPassword(this.auth, email, password);
+    const cred = await signInWithEmailAndPassword(this.auth, email, password);
+    await this.assertNotBlocked(cred.user.uid);
+  }
+
+  /**
+   * Signs the user back out and throws if their profile is blocked by an admin.
+   * Otherwise applies the freshly read profile so role-based redirects are immediate.
+   */
+  private async assertNotBlocked(uid: string): Promise<void> {
+    const snapshot = await getDoc(doc(this.db, `users/${uid}`));
+    if (snapshot.exists() && (snapshot.data() as { isBlocked?: boolean }).isBlocked) {
+      await signOut(this.auth);
+      throw new Error('Your account has been blocked. Please contact support.');
+    }
+    if (snapshot.exists()) {
+      this.applyProfile(docToAppUser(snapshot.data() as Record<string, unknown>, uid));
+    }
   }
 
   async signOutUser(): Promise<void> {
@@ -138,27 +190,59 @@ export class AuthService {
     await sendPasswordResetEmail(this.auth, email);
   }
 
-  /** Phone OTP: send code. Pass an element id that holds the invisible reCAPTCHA. */
+  /** Phone OTP: send code. Pass an element id that holds the invisible reCAPTCHA. Safe to call again for resend. */
   async sendOtp(phoneE164: string, recaptchaContainerId: string): Promise<void> {
-    const verifier = new RecaptchaVerifier(this.auth, recaptchaContainerId, { size: 'invisible' });
-    this.confirmationResult = await signInWithPhoneNumber(this.auth, phoneE164, verifier);
+    this.clearRecaptcha(recaptchaContainerId);
+    this.recaptchaVerifier = new RecaptchaVerifier(this.auth, recaptchaContainerId, { size: 'invisible' });
+    this.confirmationResult = await signInWithPhoneNumber(this.auth, phoneE164, this.recaptchaVerifier);
   }
 
-  /** Phone OTP: verify code. Creates user doc if first-time. */
-  async verifyOtp(code: string, fullName = ''): Promise<void> {
+  /** Phone OTP: verify code. Creates user doc if first-time. Returns the user's profile. */
+  async verifyOtp(code: string): Promise<AppUser> {
     if (!this.confirmationResult) throw new Error('OTP not requested');
     const cred = await this.confirmationResult.confirm(code);
+    this.confirmationResult = null;
+    this.clearRecaptcha();
+
     const ref = doc(this.db, `users/${cred.user.uid}`);
-    await setDoc(ref, {
-      uid: cred.user.uid,
-      fullName: fullName || cred.user.displayName || '',
-      email: cred.user.email ?? '',
-      phone: cred.user.phoneNumber ?? '',
-      role: 'customer',
-      isPhoneVerified: true,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    }, { merge: true });
+    const existing = await getDoc(ref);
+    if (existing.exists() && (existing.data() as { isBlocked?: boolean }).isBlocked) {
+      await signOut(this.auth);
+      throw new Error('Your account has been blocked. Please contact support.');
+    }
+    if (existing.exists()) {
+      await updateDoc(ref, {
+        phone: cred.user.phoneNumber ?? '',
+        isPhoneVerified: true,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(ref, {
+        uid: cred.user.uid,
+        fullName: cred.user.displayName ?? '',
+        email: cred.user.email ?? '',
+        phone: cred.user.phoneNumber ?? '',
+        role: 'customer',
+        isPhoneVerified: true,
+        favoriteProductIds: [],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    const snapshot = await getDoc(ref);
+    const profile = docToAppUser(snapshot.data() as Record<string, unknown>, cred.user.uid);
+    this.applyProfile(profile);
+    return profile;
+  }
+
+  private clearRecaptcha(containerId?: string): void {
+    try { this.recaptchaVerifier?.clear(); } catch { /* already destroyed */ }
+    this.recaptchaVerifier = null;
+    if (containerId) {
+      const container = document.getElementById(containerId);
+      if (container) container.innerHTML = '';
+    }
   }
 
   async updateProfile(uid: string, patch: Partial<AppUser>): Promise<void> {
@@ -193,32 +277,45 @@ export class AuthService {
 
     const snapshot = await getDoc(ref);
     if (snapshot.exists()) {
-      this._profile.set(docToAppUser(snapshot.data() as Record<string, unknown>, authUid));
-      this.isAdmin.set(this._profile()?.role === 'admin');
+      this.applyProfile(docToAppUser(snapshot.data() as Record<string, unknown>, authUid));
     }
   }
 
   async signInWithGoogle(): Promise<void> {
-
     const provider = new GoogleAuthProvider();
-
     const cred = await signInWithPopup(this.auth, provider);
-
     const user = cred.user;
 
     const userRef = doc(this.db, `users/${user.uid}`);
+    const existing = await getDoc(userRef);
 
-    await setDoc(userRef, {
-      uid: user.uid,
-      fullName: user.displayName || '',
-      email: user.email || '',
-      phone: user.phoneNumber || '',
-      profileImage: user.photoURL || '',
-      role: 'customer',
-      isPhoneVerified: false,
-      authProvider: 'google',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    }, { merge: true });
+    if (existing.exists()) {
+      const data = existing.data() as { isBlocked?: boolean; profileImage?: string; profileImageUrl?: string };
+      if (data.isBlocked) {
+        await signOut(this.auth);
+        throw new Error('Your account has been blocked. Please contact support.');
+      }
+      // Returning user: never touch role/fullName; only backfill a missing profile photo.
+      if (!data.profileImage && !data.profileImageUrl && user.photoURL) {
+        await updateDoc(userRef, { profileImage: user.photoURL, updatedAt: serverTimestamp() });
+      }
+    } else {
+      await setDoc(userRef, {
+        uid: user.uid,
+        fullName: user.displayName || '',
+        email: user.email || '',
+        phone: user.phoneNumber || '',
+        profileImage: user.photoURL || '',
+        role: 'customer',
+        isPhoneVerified: false,
+        favoriteProductIds: [],
+        authProvider: 'google',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    const snapshot = await getDoc(userRef);
+    this.applyProfile(docToAppUser(snapshot.data() as Record<string, unknown>, user.uid));
   }
 }

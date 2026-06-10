@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, ElementRef, inject, OnDestroy, OnInit, signal, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { LucideAngularModule, MapPin, Bell, ChevronDown } from 'lucide-angular';
@@ -13,6 +13,7 @@ import { ProductCardComponent } from '../../shared/product-card.component';
 import { SearchBarComponent } from '../../shared/search-bar.component';
 import { BottomNavbarComponent } from '../../shared/bottom-navbar.component';
 import { LocationService } from '../../core/services/location.service';
+import { Banner } from '../../core/models';
 
 @Component({
   selector: 'app-home',
@@ -55,23 +56,42 @@ import { LocationService } from '../../core/services/location.service';
           (searchSubmit)="onSearch($event)"></app-search-bar>
       </div>
 
-      <!-- Promo banner from Firestore (uses first active banner) -->
+      <!-- Promo banner carousel from Firestore (all active banners) -->
       <div class="px-5 mt-6">
-        @if (firstBanner(); as b) {
-          <div data-testid="promo-banner"
-               class="relative rounded-card overflow-hidden text-white p-5 shadow-soft-lg"
-               style="background: linear-gradient(120deg,#08B44D 0%,#00963F 100%);">
-            <div class="relative z-10 max-w-[60%]">
-              @if (b.subtitle) {
-                <span class="inline-block bg-white/20 backdrop-blur px-3 py-1 rounded-full text-[11px] font-semibold mb-3">{{ b.subtitle }}</span>
-              }
-              <h3 class="text-xl font-extrabold leading-tight mb-1">{{ b.title }}</h3>
-              @if (b.ctaLabel) {
-                <button class="mt-3 inline-flex items-center gap-2 bg-white text-primary text-[12px] font-bold rounded-full px-4 py-2 shadow-soft">{{ b.ctaLabel }}</button>
+        @if (banners().length > 0) {
+          <div data-testid="banner-carousel">
+            <div #carousel (scroll)="onCarouselScroll()"
+                 class="flex overflow-x-auto no-scrollbar snap-x snap-mandatory gap-4 -mx-5 px-5">
+              @for (b of banners(); track b.id) {
+                <div data-testid="promo-banner" (click)="onBannerClick(b)"
+                     class="relative rounded-card overflow-hidden text-white p-5 shadow-soft-lg flex-shrink-0 w-full snap-center cursor-pointer min-h-[150px]"
+                     style="background: linear-gradient(120deg,#08B44D 0%,#00963F 100%);">
+                  <div class="relative z-10 max-w-[60%]">
+                    @if (b.subtitle) {
+                      <span class="inline-block bg-white/20 backdrop-blur px-3 py-1 rounded-full text-[11px] font-semibold mb-3">{{ b.subtitle }}</span>
+                    }
+                    <h3 class="text-xl font-extrabold leading-tight mb-1">{{ b.title }}</h3>
+                    @if (b.ctaLabel) {
+                      <button class="mt-3 inline-flex items-center gap-2 bg-white text-primary text-[12px] font-bold rounded-full px-4 py-2 shadow-soft">{{ b.ctaLabel }}</button>
+                    }
+                  </div>
+                  <div class="absolute -right-6 -bottom-4 w-40 h-40 rounded-full bg-white/10"></div>
+                  <img [src]="b.imageUrl" alt="banner" class="absolute right-0 bottom-0 h-36 w-36 object-cover rounded-full shadow-2xl border-4 border-white/20" />
+                </div>
               }
             </div>
-            <div class="absolute -right-6 -bottom-4 w-40 h-40 rounded-full bg-white/10"></div>
-            <img [src]="b.imageUrl" alt="banner" class="absolute right-0 bottom-0 h-36 w-36 object-cover rounded-full shadow-2xl border-4 border-white/20" />
+            @if (banners().length > 1) {
+              <div class="flex justify-center gap-1.5 mt-3">
+                @for (b of banners(); track b.id; let i = $index) {
+                  <button type="button" (click)="goToSlide(i)"
+                          class="h-1.5 rounded-full transition-all duration-300"
+                          [class.w-5]="activeSlide() === i"
+                          [class.bg-primary]="activeSlide() === i"
+                          [class.w-1.5]="activeSlide() !== i"
+                          [class.bg-border-soft]="activeSlide() !== i"></button>
+                }
+              </div>
+            }
           </div>
         } @else {
           <div class="relative rounded-card overflow-hidden text-white p-5 shadow-soft-lg" style="background: linear-gradient(120deg,#08B44D 0%,#00963F 100%);">
@@ -159,7 +179,7 @@ import { LocationService } from '../../core/services/location.service';
     </div>
   `,
 })
-export class HomeComponent implements OnInit {
+export class HomeComponent implements OnInit, OnDestroy {
   /** Shown under the search field (static copy). */
   readonly searchHint =
     'Type a fruit name (for example kiwi), then press Enter on the keyboard or tap the green search button on the right.';
@@ -185,13 +205,54 @@ export class HomeComponent implements OnInit {
 
   ngOnInit(): void {
     void this.location.loadSaved();
+    this.autoSlideTimer = setInterval(() => this.nextSlide(), 4000);
+  }
+
+  ngOnDestroy(): void {
+    clearInterval(this.autoSlideTimer);
   }
 
   readonly categories = toSignal(this.catsSvc.list());
   readonly banners = toSignal(this.bannersSvc.list(), { initialValue: [] });
   readonly products = toSignal(this.productsSvc.list());
 
-  readonly firstBanner = computed(() => this.banners()[0]);
+  // ----- Banner carousel -----
+  private readonly carouselEl = viewChild<ElementRef<HTMLDivElement>>('carousel');
+  readonly activeSlide = signal(0);
+  private autoSlideTimer: ReturnType<typeof setInterval> | undefined;
+
+  /** Width of one slide step: slide (full width minus px-5 padding) + gap-4. */
+  private slideStep(el: HTMLDivElement): number {
+    return el.clientWidth - 40 + 16;
+  }
+
+  onCarouselScroll(): void {
+    const el = this.carouselEl()?.nativeElement;
+    if (!el) return;
+    this.activeSlide.set(Math.round(el.scrollLeft / this.slideStep(el)));
+  }
+
+  goToSlide(i: number): void {
+    const el = this.carouselEl()?.nativeElement;
+    if (!el) return;
+    el.scrollTo({ left: i * this.slideStep(el), behavior: 'smooth' });
+  }
+
+  private nextSlide(): void {
+    const count = this.banners().length;
+    if (count < 2) return;
+    this.goToSlide((this.activeSlide() + 1) % count);
+  }
+
+  onBannerClick(b: Banner): void {
+    if (!b.redirectUrl) return;
+    if (b.redirectUrl.startsWith('http')) {
+      window.open(b.redirectUrl, '_blank');
+    } else {
+      this.router.navigateByUrl(b.redirectUrl);
+    }
+  }
+
   readonly popular = computed(() => {
     const list = this.products();
     if (list === undefined) return undefined;

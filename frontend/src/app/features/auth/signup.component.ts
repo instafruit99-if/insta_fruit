@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { LucideAngularModule, Mail, Lock, User, Eye, EyeOff, AlertCircle } from 'lucide-angular';
-import { AuthService } from '../../core/services/auth.service';
+import { AuthService, friendlyAuthError } from '../../core/services/auth.service';
 
 @Component({
   selector: 'app-signup',
@@ -91,11 +91,7 @@ export class SignupComponent {
       await this.auth.signUp(this.name.trim(), this.email.trim(), this.password);
       this.router.navigate(['/home']);
     } catch (e: unknown) {
-      const code = (e as { code?: string })?.code ?? '';
-      if (code.includes('email-already-in-use')) this.error.set('Email is already registered');
-      else if (code.includes('weak-password')) this.error.set('Password is too weak');
-      else if (code.includes('invalid-email')) this.error.set('Invalid email address');
-      else this.error.set((e as Error)?.message ?? 'Signup failed');
+      this.error.set(friendlyAuthError(e, 'Signup failed'));
     } finally { this.loading.set(false); }
   }
 
