@@ -8,11 +8,14 @@ import { AuthService } from '../../core/services/auth.service';
 import { OrdersService } from '../../core/services/orders.service';
 import { PaymentService } from '../../core/services/payment.service';
 import { AnalyticsService } from '../../core/services/analytics.service';
+import { LocationService } from '../../core/services/location.service';
 import { PaymentMethod } from '../../core/models';
 import { AddressEngineService } from '../../core/address/address-engine.service';
 import { AddressError } from '../../core/address/address-errors';
 import { AddressLabelType, SavedAddress } from '../../core/address/address.types';
 import { normalizeLabel } from '../../core/address/address-validation';
+import { pincodeToCityState } from '../../core/address/address.constants';
+import { DeliveryEligibilityService } from '../../core/address/delivery-eligibility.service';
 import { DeliveryEngineService } from '../../core/delivery/delivery-engine.service';
 import { DeliveryError } from '../../core/delivery/delivery-errors';
 
@@ -35,21 +38,42 @@ import { DeliveryError } from '../../core/delivery/delivery-errors';
           <h2 class="text-[14px] font-bold text-text-primary mb-2">Delivery Address</h2>
           @if (isEditingAddress()) {
             <div class="bg-white rounded-card p-4 shadow-soft space-y-3">
+              <p class="text-[11px] text-text-secondary font-medium">Start with pincode — city and state will auto-fill.</p>
+              <input #addrPin type="text" inputmode="numeric" maxlength="6"
+                     class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft"
+                     placeholder="Pincode (6 digits) *"
+                     [value]="editPincode()"
+                     (input)="onPincodeInput(addrPin.value)">
+              <div class="flex gap-2">
+                <input #addrCity readonly
+                       class="w-1/2 text-[13px] px-3 py-2 rounded-input border border-border-soft bg-[#FAFAFA]"
+                       placeholder="City" [value]="editCity()">
+                <input #addrState readonly
+                       class="w-1/2 text-[13px] px-3 py-2 rounded-input border border-border-soft bg-[#FAFAFA]"
+                       placeholder="State" [value]="editState()">
+              </div>
+              @if (editPincodeEligibility()) {
+                <p class="text-[11px] font-semibold"
+                   [class.text-primary]="editPincodeEligibility()!.serviceable"
+                   [class.text-red-500]="!editPincodeEligibility()!.serviceable">
+                  {{ editPincodeEligibility()!.message }}
+                </p>
+              }
+              <input #addrLine1 class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft"
+                     placeholder="House / Flat / Building *" [value]="editLine1()">
+              <input #addrLine2 class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft"
+                     placeholder="Apartment / Floor (optional)" [value]="editLine2()">
+              <input #addrLandmark class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft"
+                     placeholder="Nearby landmark * (e.g. opp. City Mall)" [value]="editLandmark()">
               <select #addrType class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft">
                 <option value="home" [selected]="editLabel() === 'home'">Home</option>
                 <option value="work" [selected]="editLabel() === 'work'">Work</option>
                 <option value="other" [selected]="editLabel() === 'other'">Other</option>
               </select>
-              <input #addrName class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="Full name" [value]="editFullName()">
-              <input #addrPhone class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="Phone (10 digits)" [value]="editPhone()">
-              <input #addrLine1 class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="Street Address" [value]="editLine1()">
-              <input #addrLine2 class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="Apartment / Floor (optional)" [value]="editLine2()">
-              <input #addrLandmark class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="Landmark (optional)" [value]="editLandmark()">
-              <div class="flex gap-2">
-                <input #addrCity class="w-1/2 text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="City" [value]="editCity()">
-                <input #addrState class="w-1/2 text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="State" [value]="editState()">
-              </div>
-              <input #addrPin class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft" placeholder="Pincode (6 digits)" [value]="editPincode()">
+              <input #addrName class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft"
+                     placeholder="Full name *" [value]="editFullName()">
+              <input #addrPhone class="w-full text-[13px] px-3 py-2 rounded-input border border-border-soft"
+                     placeholder="Phone (10 digits) *" [value]="editPhone()">
               <div class="flex gap-2 mt-2">
                 <button (click)="cancelEditAddress()" class="flex-1 bg-gray-100 text-text-primary text-[13px] font-semibold py-2 rounded-xl">Cancel</button>
                 <button (click)="saveAddress(addrType.value, addrName.value, addrPhone.value, addrLine1.value, addrLine2.value, addrLandmark.value, addrCity.value, addrState.value, addrPin.value)" class="flex-1 bg-primary text-white text-[13px] font-bold py-2 rounded-xl shadow-green flex items-center justify-center">
@@ -69,7 +93,7 @@ import { DeliveryError } from '../../core/delivery/delivery-errors';
                   </div>
                   <div class="flex-1 min-w-0">
                     <p class="text-[13px] font-bold text-text-primary capitalize">{{ addr.label }} @if (addr.isDefault) { <span class="text-[10px] text-primary font-semibold">· Default</span> }</p>
-                    <p class="text-[12px] text-text-secondary leading-relaxed mt-0.5">{{ addr.addressLine1 }}<br/>{{ addr.city }}, {{ addr.state }} {{ addr.pincode }}</p>
+                    <p class="text-[12px] text-text-secondary leading-relaxed mt-0.5">{{ addr.addressLine1 }}<br/>@if (addr.landmark) { Near {{ addr.landmark }}<br/> }{{ addr.city }}, {{ addr.state }} {{ addr.pincode }}</p>
                   </div>
                   <span class="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-1"
                     [class.border-primary]="selectedId() === addr.id" [class.border-border-soft]="selectedId() !== addr.id">
@@ -217,6 +241,8 @@ export class CheckoutComponent {
 
   private readonly addressEngine = inject(AddressEngineService);
   private readonly deliveryEngine = inject(DeliveryEngineService);
+  private readonly deliveryEligibilitySvc = inject(DeliveryEligibilityService);
+  private readonly browseLocation = inject(LocationService);
 
   readonly deliveryQuote = computed(() => this.deliveryEngine.quoteCheckout(this.cart.subtotal()));
   readonly freeDeliveryMessage = computed(() => {
@@ -238,10 +264,26 @@ export class CheckoutComponent {
   readonly editCity = signal('');
   readonly editState = signal('');
   readonly editPincode = signal('');
+  readonly editPincodeEligibility = signal<{ serviceable: boolean; message: string } | null>(null);
+
+  onPincodeInput(raw: string): void {
+    const pin = raw.replace(/\D/g, '').slice(0, 6);
+    this.editPincode.set(pin);
+    this.editPincodeEligibility.set(null);
+    if (pin.length !== 6) return;
+    const cityState = pincodeToCityState(pin);
+    if (cityState) {
+      this.editCity.set(cityState.city);
+      this.editState.set(cityState.state);
+    }
+    this.editPincodeEligibility.set(this.deliveryEligibilitySvc.check(pin));
+  }
 
   selectAddress(addr: SavedAddress): void {
     this.addressEngine.selectAddress(addr.id);
-    void this.addressEngine.setDefault(addr.id);
+    void this.addressEngine.setDefault(addr.id).then(() => {
+      this.browseLocation.setFromSavedAddress(addr);
+    });
     this.error.set('');
   }
 
@@ -257,6 +299,7 @@ export class CheckoutComponent {
     this.editCity.set('Raipur');
     this.editState.set('Chhattisgarh');
     this.editPincode.set('');
+    this.editPincodeEligibility.set(null);
     this.isEditingAddress.set(true);
   }
 
@@ -273,12 +316,14 @@ export class CheckoutComponent {
     this.editCity.set(addr.city);
     this.editState.set(addr.state);
     this.editPincode.set(addr.pincode);
+    this.editPincodeEligibility.set(this.deliveryEligibilitySvc.check(addr.pincode));
     this.isEditingAddress.set(true);
   }
 
   cancelEditAddress(): void {
     this.isEditingAddress.set(false);
     this.editingId.set(null);
+    this.editPincodeEligibility.set(null);
   }
 
   async saveAddress(
@@ -306,6 +351,10 @@ export class CheckoutComponent {
         await this.addressEngine.updateAddress(id, input);
       } else {
         await this.addressEngine.addAddress(input);
+      }
+      const saved = this.addressEngine.selectedAddress();
+      if (saved) {
+        this.browseLocation.setFromSavedAddress(saved);
       }
       this.isEditingAddress.set(false);
       this.editingId.set(null);

@@ -29,6 +29,16 @@ export function isRaipurDistrictPincode(pincode: string): boolean {
   return (RAIPUR_EXTENDED_PINCODES as readonly string[]).includes(p);
 }
 
+/** Known city/state for serviceable pincodes (Raipur district only for now). */
+export function pincodeToCityState(pincode: string): { city: string; state: string } | null {
+  const p = pincode.trim();
+  if (!/^\d{6}$/.test(p)) return null;
+  if (isRaipurDistrictPincode(p)) {
+    return { city: 'Raipur', state: 'Chhattisgarh' };
+  }
+  return null;
+}
+
 /** Future-ready zone config for hyperlocal delivery. */
 export const DELIVERY_ZONES: readonly DeliveryZone[] = [
   {

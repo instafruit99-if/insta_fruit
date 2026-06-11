@@ -4,9 +4,11 @@ import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { Address, AppUser } from '../models';
 import { savedAddressToOrderAddress } from '../address/address-engine.service';
+import { SavedAddress } from '../address/address.types';
+import { pincodeToCityState } from '../address/address.constants';
 import { AuthService } from './auth.service';
 
-const SESSION_KEY = 'instafruit_location';
+const SESSION_KEY = 'instafruit_browse_location';
 
 interface GeocodeResult {
   locality: string;
@@ -18,9 +20,9 @@ interface GeocodeResult {
   formattedAddress: string;
 }
 
-interface SessionLocation {
-  locality: string;
-  city: string;
+/** Guest browse location — pincode only, not a full delivery address. */
+interface GuestBrowseLocation {
+  pincode: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -28,26 +30,47 @@ export class LocationService {
   private readonly http = inject(HttpClient);
   private readonly auth = inject(AuthService);
 
-  readonly area = signal('Add address');
+  /** Short label shown in the home header (e.g. "Shankar Nagar" or "492001"). */
+  readonly area = signal('Add location');
   readonly loading = signal(false);
+  /** Active browse pincode — from saved address or guest session. */
+  readonly pincode = signal<string | null>(null);
 
-  /** Home header: only saved profile address (no GPS). */
+  /** Home header: saved profile address (logged in) or guest pincode from session. */
   async loadSaved(): Promise<void> {
     await this.waitForProfile();
     const profile = this.auth.profile();
-    const savedEntry = profile?.addresses?.find((a) => a.isDefault) ?? profile?.addresses?.[0];
-    const saved = profile?.defaultAddress
-      ?? (savedEntry ? savedAddressToOrderAddress(savedEntry) : undefined);
-    this.area.set(saved ? shortAreaFromAddress(saved) : 'Add address');
+    if (profile) {
+      this.applyProfileAddress(profile);
+      return;
+    }
+    this.applyGuestSession();
+  }
+
+  /** Update header from a saved delivery address (logged-in user). */
+  setFromSavedAddress(saved: SavedAddress): void {
+    const orderAddr = savedAddressToOrderAddress(saved);
+    this.area.set(shortAreaFromSaved(saved));
+    this.pincode.set(saved.pincode);
+    clearGuestSession();
+  }
+
+  /** Update header from guest pincode browse (not logged in). */
+  setGuestPincode(pincode: string): void {
+    const normalized = pincode.trim();
+    const cityState = pincodeToCityState(normalized);
+    this.area.set(cityState ? `${cityState.city} (${normalized})` : normalized);
+    this.pincode.set(normalized);
+    writeGuestSession({ pincode: normalized });
   }
 
   /**
    * GPS + reverse geocode via Node.js backend.
-   * Call from UI when enabling auto-location later.
+   * Fills header label; persists lastLocation for logged-in users.
    */
   async fetchFromGps(): Promise<void> {
     if (!navigator.geolocation) {
-      this.area.set('Set location');
+      this.area.set('Location unavailable');
       return;
     }
 
@@ -62,13 +85,47 @@ export class LocationService {
       );
       const label = data.locality || data.city || 'Your area';
       this.area.set(label);
-      writeSession({ locality: label, city: data.city });
+      if (data.postalCode) {
+        this.pincode.set(data.postalCode);
+        if (!this.auth.user()?.uid) {
+          writeGuestSession({ pincode: data.postalCode });
+        }
+      }
       await this.persist(coords, data);
     } catch {
       await this.loadSaved();
     } finally {
       this.loading.set(false);
     }
+  }
+
+  private applyProfileAddress(profile: AppUser): void {
+    const savedEntry = profile.addresses?.find((a) => a.isDefault) ?? profile.addresses?.[0];
+    if (savedEntry) {
+      this.setFromSavedAddress(savedEntry);
+      return;
+    }
+    const legacy = profile.defaultAddress;
+    if (legacy) {
+      this.area.set(shortAreaFromAddress(legacy));
+      this.pincode.set(legacy.postalCode || null);
+      clearGuestSession();
+      return;
+    }
+    this.area.set('Add address');
+    this.pincode.set(null);
+  }
+
+  private applyGuestSession(): void {
+    const guest = readGuestSession();
+    if (guest?.pincode) {
+      const cityState = pincodeToCityState(guest.pincode);
+      this.area.set(cityState ? `${cityState.city} (${guest.pincode})` : guest.pincode);
+      this.pincode.set(guest.pincode);
+      return;
+    }
+    this.area.set('Add location');
+    this.pincode.set(null);
   }
 
   private async persist(coords: { lat: number; lng: number }, data: GeocodeResult): Promise<void> {
@@ -99,6 +156,14 @@ export class LocationService {
   }
 }
 
+function shortAreaFromSaved(saved: SavedAddress): string {
+  const landmark = saved.landmark?.trim();
+  const city = saved.city?.trim();
+  if (landmark && city) return `${landmark}, ${city}`;
+  if (saved.addressLine1?.trim() && city) return `${saved.addressLine1}, ${city}`;
+  return city || saved.pincode || 'Add address';
+}
+
 function shortAreaFromAddress(addr: Address): string {
   return addr.locality?.trim() || addr.label?.trim() || addr.city?.trim() || 'Add address';
 }
@@ -116,11 +181,33 @@ function geocodeToAddress(data: GeocodeResult, coords: { lat: number; lng: numbe
   };
 }
 
-function writeSession(loc: SessionLocation): void {
+function writeGuestSession(loc: GuestBrowseLocation): void {
   try {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(loc));
   } catch {
     /* private mode / quota */
+  }
+}
+
+function readGuestSession(): GuestBrowseLocation | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as GuestBrowseLocation;
+    if (typeof parsed.pincode === 'string' && /^\d{6}$/.test(parsed.pincode)) {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function clearGuestSession(): void {
+  try {
+    sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* ignore */
   }
 }
 

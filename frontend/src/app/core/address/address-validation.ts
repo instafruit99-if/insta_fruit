@@ -40,9 +40,14 @@ export function validateSavedAddressInput(input: SavedAddressInput): SavedAddres
   const state = trim(input.state);
   const pincode = trim(input.pincode);
   const country = trim(input.country ?? 'India') || 'India';
+  const landmark = trim(input.landmark ?? '');
 
   if (!fullName || !addressLine1 || !city || !state) {
     throw addressError('ADDRESS_REQUIRED');
+  }
+
+  if (!landmark) {
+    throw addressError('ADDRESS_REQUIRED', 'Please add a nearby landmark for accurate delivery.');
   }
 
   validatePincode(pincode);
@@ -54,7 +59,7 @@ export function validateSavedAddressInput(input: SavedAddressInput): SavedAddres
     phone: trim(input.phone).replace(/\D/g, '').slice(-10),
     addressLine1,
     addressLine2: input.addressLine2?.trim() || '',
-    landmark: input.landmark?.trim() || '',
+    landmark,
     city,
     state,
     pincode,

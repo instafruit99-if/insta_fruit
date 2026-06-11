@@ -12,13 +12,14 @@ import { AuthService } from '../../core/services/auth.service';
 import { ProductCardComponent } from '../../shared/product-card.component';
 import { SearchBarComponent } from '../../shared/search-bar.component';
 import { BottomNavbarComponent } from '../../shared/bottom-navbar.component';
+import { LocationPickerComponent } from '../../shared/location-picker.component';
 import { LocationService } from '../../core/services/location.service';
 import { Banner } from '../../core/models';
 
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [CommonModule, LucideAngularModule, ProductCardComponent, SearchBarComponent, BottomNavbarComponent],
+  imports: [CommonModule, LucideAngularModule, ProductCardComponent, SearchBarComponent, BottomNavbarComponent, LocationPickerComponent],
   template: `
     <div data-testid="home-page" class="min-h-screen pb-28" style="background:#FAFAFA;">
       <div class="px-5 pt-12 pb-8 text-white relative overflow-hidden"
@@ -32,8 +33,10 @@ import { Banner } from '../../core/models';
               <span>Deliver to</span>
             </div>
             <button type="button" data-testid="location-btn"
-                    class="flex items-center gap-1 text-white text-[15px] font-bold">
-              {{ location.area() }}
+                    (click)="openLocationPicker()"
+                    [disabled]="location.loading()"
+                    class="flex items-center gap-1 text-white text-[15px] font-bold disabled:opacity-70 active:scale-95 transition-transform">
+              {{ location.loading() ? 'Detecting…' : location.area() }}
               <lucide-icon [img]="ChevronIcon" [size]="16"></lucide-icon>
             </button>
           </div>
@@ -176,6 +179,8 @@ import { Banner } from '../../core/models';
       </div>
 
       <app-bottom-navbar></app-bottom-navbar>
+
+      <app-location-picker [open]="showLocationPicker()" (closed)="showLocationPicker.set(false)" />
     </div>
   `,
 })
@@ -268,7 +273,12 @@ export class HomeComponent implements OnInit, OnDestroy {
     return filtered.slice(0, 6);
   });
   readonly selectedCategory = signal<string>('');
+  readonly showLocationPicker = signal(false);
   readonly firstName = computed(() => (this.auth.profile()?.fullName ?? '').split(' ')[0] || 'there');
+
+  openLocationPicker(): void {
+    this.showLocationPicker.set(true);
+  }
 
   goProducts(): void {
     const cat = this.selectedCategory();
