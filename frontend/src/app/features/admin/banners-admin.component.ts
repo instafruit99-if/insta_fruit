@@ -105,7 +105,15 @@ export class BannersAdminComponent {
 
   openNew(): void { this.form.set({ title: '', subtitle: '', ctaLabel: 'Shop Now', imageUrl: '', redirectUrl: '/products', isActive: true }); this.modal.set(true); }
   openEdit(b: Banner): void {
-    this.form.set({ id: b.id, title: b.title, subtitle: b.subtitle ?? '', ctaLabel: b.ctaLabel ?? '', imageUrl: b.imageUrl, redirectUrl: b.redirectUrl, isActive: b.isActive });
+    this.form.set({
+      id: b.id,
+      title: b.title,
+      subtitle: b.subtitle ?? '',
+      ctaLabel: b.ctaLabel ?? '',
+      imageUrl: b.imageUrl,
+      redirectUrl: b.redirectUrl ?? '',
+      isActive: b.isActive,
+    });
     this.modal.set(true);
   }
   async upload(e: Event): Promise<void> {
@@ -124,7 +132,15 @@ export class BannersAdminComponent {
     if (!f.title) return;
     this.saving.set(true);
     try {
-      const payload = { title: f.title, subtitle: f.subtitle, ctaLabel: f.ctaLabel, imageUrl: f.imageUrl, redirectUrl: f.redirectUrl, isActive: f.isActive, sortOrder: 100 };
+      const payload = {
+        title: f.title,
+        subtitle: f.subtitle || '',
+        ctaLabel: f.ctaLabel || '',
+        imageUrl: f.imageUrl,
+        redirectUrl: f.redirectUrl || '',
+        isActive: f.isActive,
+        sortOrder: 100,
+      };
       if (f.id) await this.bannersSvc.update(f.id, payload);
       else await this.bannersSvc.create(payload);
       this.modal.set(false);

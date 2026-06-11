@@ -24,12 +24,18 @@ export class BannersService {
   }
 
   async create(b: Omit<Banner, 'id'>): Promise<string> {
-    const ref = await addDoc(this.col, b);
+    const clean = Object.fromEntries(
+      Object.entries(b).filter(([, value]) => value !== undefined),
+    );
+    const ref = await addDoc(this.col, clean);
     return ref.id;
   }
 
   async update(id: string, patch: Partial<Banner>): Promise<void> {
-    await updateDoc(doc(this.db, `banners/${id}`), patch);
+    const clean = Object.fromEntries(
+      Object.entries(patch).filter(([, value]) => value !== undefined),
+    );
+    await updateDoc(doc(this.db, `banners/${id}`), clean);
   }
 
   async remove(id: string): Promise<void> {
